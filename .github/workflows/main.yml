@@ -24,7 +24,7 @@ jobs:
       - name: Generate Android scaffold if missing
         run: |
           if [ ! -d "android" ]; then
-            flutter create . --platforms=android --org jp.tsunagarucall
+            flutter create . --platforms=android --project-name tsunagaru_call --org jp.tsunagarucall
           fi
 
       - name: Patch AndroidManifest, Gradle SDK & copy category ringtones
