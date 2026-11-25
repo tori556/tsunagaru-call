@@ -22,14 +22,18 @@ jobs:
 
       - name: Normalize pubspec.yaml & Generate Android project
         run: |
-          python3 -c '
+          cat << 'EOF' > /tmp/patch_pubspec.py
           import re
-          p = "pubspec.yaml"
-          txt = open(p, encoding="utf-8").read()
-          txt = re.sub(r"flutter_webrtc:\s*\^?[0-9a-zA-Z.+_-]+", "flutter_webrtc: ^0.12.12+hotfix.1", txt)
-          txt = re.sub(r"livekit_client:\s*\^?[0-9a-zA-Z.+_-]+", "livekit_client: ^2.3.1", txt)
-          open(p, "w", encoding="utf-8").write(txt)
-          '
+          from pathlib import Path
+
+          p = Path("pubspec.yaml")
+          if p.exists():
+              txt = p.read_text(encoding="utf-8")
+              txt = re.sub(r"flutter_webrtc:\s*\^?[0-9a-zA-Z.+_-]+", "flutter_webrtc: ^0.12.12+hotfix.1", txt)
+              txt = re.sub(r"livekit_client:\s*\^?[0-9a-zA-Z.+_-]+", "livekit_client: ^2.3.1", txt)
+              p.write_text(txt, encoding="utf-8")
+          EOF
+          python3 /tmp/patch_pubspec.py
           if [ ! -d "android" ]; then
             flutter create . --platforms=android --project-name tsunagaru_call --org jp.tsunagarucall
           fi
@@ -39,44 +43,57 @@ jobs:
           if [ -f "native-config/android/patch_manifest.py" ]; then
             python3 native-config/android/patch_manifest.py
           fi
-          python3 -c '
-          import glob, re
+          cat << 'EOF' > /tmp/upgrade_android.py
+          import re
+          from pathlib import Path
 
           AGP_VER = "8.7.3"
           KOTLIN_VER = "2.1.0"
           GRADLE_VER = "8.9"
           SDK_VER = "35"
 
-          def bump_ver(match, target):
-              prefix, ver = match.group(1), match.group(2)
-              parts = lambda s: [int(x) for x in re.findall(r"\d+", s)]
-              if parts(ver) < parts(target):
+          def ver_tuple(v: str):
+              return [int(x) for x in re.findall(r"\d+", v)]
+
+          def bump_if_older(match, target: str) -> str:
+              prefix, current = match.group(1), match.group(2)
+              if ver_tuple(current) < ver_tuple(target):
                   return f"{prefix}{target}"
               return match.group(0)
 
-          for path in glob.glob("android/**/*", recursive=True):
-              if path.endswith(("build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts", "gradle.properties")):
-                  txt = open(path, encoding="utf-8").read()
-                  txt = re.sub(r"(com\.android\.application[\"'\'']?\s*(?:version)?\s*[\"'\''])([0-9]+\.[0-9]+\.[0-9]+)", lambda m: bump_ver(m, AGP_VER), txt)
-                  txt = re.sub(r"(com\.android\.library[\"'\'']?\s*(?:version)?\s*[\"'\''])([0-9]+\.[0-9]+\.[0-9]+)", lambda m: bump_ver(m, AGP_VER), txt)
-                  txt = re.sub(r"(com\.android\.tools\.build:gradle:)([0-9]+\.[0-9]+\.[0-9]+)", lambda m: bump_ver(m, AGP_VER), txt)
-                  txt = re.sub(r"(org\.jetbrains\.kotlin\.android[\"'\'']?\s*(?:version)?\s*[\"'\''])([0-9]+\.[0-9]+\.[0-9]+)", lambda m: bump_ver(m, KOTLIN_VER), txt)
-                  txt = re.sub(r"(kotlin-gradle-plugin:)([0-9]+\.[0-9]+\.[0-9]+)", lambda m: bump_ver(m, KOTLIN_VER), txt)
-                  txt = re.sub(r"(ext\.kotlin_version\s*=\s*[\"'\''])([0-9]+\.[0-9]+\.[0-9]+)([\"'\''])", lambda m: f"{m.group(1)}{KOTLIN_VER if [int(x) for x in m.group(2).split(\".\")] < [int(x) for x in KOTLIN_VER.split(\".\")] else m.group(2)}{m.group(3)}", txt)
-                  txt = re.sub(r"(compileSdk\s*=?\s*)([0-9]+)", lambda m: bump_ver(m, SDK_VER), txt)
-                  txt = re.sub(r"(targetSdk\s*=?\s*)([0-9]+)", lambda m: bump_ver(m, SDK_VER), txt)
-                  txt = re.sub(r"(compileSdkVersion\s+)([0-9]+)", lambda m: bump_ver(m, SDK_VER), txt)
-                  txt = re.sub(r"(targetSdkVersion\s+)([0-9]+)", lambda m: bump_ver(m, SDK_VER), txt)
-                  open(path, "w", encoding="utf-8").write(txt)
+          android_dir = Path("android")
+          target_exts = {".gradle", ".kts", ".properties"}
 
-          wp = "android/gradle/wrapper/gradle-wrapper.properties"
-          try:
-              wtxt = open(wp, encoding="utf-8").read()
-              wtxt = re.sub(r"gradle-([0-9.]+)-(bin|all)\.zip", lambda m: f"gradle-{GRADLE_VER if [int(x) for x in m.group(1).split(\".\")] < [int(x) for x in GRADLE_VER.split(\".\")] else m.group(1)}-{m.group(2)}.zip", wtxt)
-              open(wp, "w", encoding="utf-8").write(wtxt)
-          except FileNotFoundError:
-              pass
-          '
+          if android_dir.exists():
+              for path in android_dir.rglob("*"):
+                  if not path.is_file():
+                      continue
+                  if path.suffix in target_exts or path.name in ("build.gradle", "settings.gradle", "gradle.properties"):
+                      txt = path.read_text(encoding="utf-8")
+                      txt = re.sub(r'(com\.android\.application["\']?\s*(?:version)?\s*["\'])([0-9]+\.[0-9]+\.[0-9]+)', lambda m: bump_if_older(m, AGP_VER), txt)
+                      txt = re.sub(r'(com\.android\.library["\']?\s*(?:version)?\s*["\'])([0-9]+\.[0-9]+\.[0-9]+)', lambda m: bump_if_older(m, AGP_VER), txt)
+                      txt = re.sub(r'(com\.android\.tools\.build:gradle:)([0-9]+\.[0-9]+\.[0-9]+)', lambda m: bump_if_older(m, AGP_VER), txt)
+                      txt = re.sub(r'(org\.jetbrains\.kotlin\.android["\']?\s*(?:version)?\s*["\'])([0-9]+\.[0-9]+\.[0-9]+)', lambda m: bump_if_older(m, KOTLIN_VER), txt)
+                      txt = re.sub(r'(kotlin-gradle-plugin:)([0-9]+\.[0-9]+\.[0-9]+)', lambda m: bump_if_older(m, KOTLIN_VER), txt)
+                      txt = re.sub(r'(ext\.kotlin_version\s*=\s*["\'])([0-9]+\.[0-9]+\.[0-9]+)(["\'])', lambda m: f"{m.group(1)}{KOTLIN_VER if ver_tuple(m.group(2)) < ver_tuple(KOTLIN_VER) else m.group(2)}{m.group(3)}", txt)
+                      txt = re.sub(r'(compileSdk\s*=?\s*)([0-9]+)', lambda m: bump_if_older(m, SDK_VER), txt)
+                      txt = re.sub(r'(targetSdk\s*=?\s*)([0-9]+)', lambda m: bump_if_older(m, SDK_VER), txt)
+                      txt = re.sub(r'(compileSdkVersion\s+)([0-9]+)', lambda m: bump_if_older(m, SDK_VER), txt)
+                      txt = re.sub(r'(targetSdkVersion\s+)([0-9]+)', lambda m: bump_if_older(m, SDK_VER), txt)
+                      path.write_text(txt, encoding="utf-8")
+
+          wrapper = Path("android/gradle/wrapper/gradle-wrapper.properties")
+          if wrapper.exists():
+              wtxt = wrapper.read_text(encoding="utf-8")
+              def bump_gradle(m):
+                  ver = m.group(1)
+                  kind = m.group(2)
+                  new_ver = GRADLE_VER if ver_tuple(ver) < ver_tuple(GRADLE_VER) else ver
+                  return f"gradle-{new_ver}-{kind}.zip"
+              wtxt = re.sub(r"gradle-([0-9.]+)-(bin|all)\.zip", bump_gradle, wtxt)
+              wrapper.write_text(wtxt, encoding="utf-8")
+          EOF
+          python3 /tmp/upgrade_android.py
 
       - name: Install Flutter packages & Build Debug APK
         run: |
