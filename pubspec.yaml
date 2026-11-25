@@ -1,0 +1,39 @@
+name: tsunagaru_call
+description: LINE風UI・5カテゴリ連絡先・QR追加・写真送信・グループ通話(LiveKit)・PushKit VoIP・TURN中継・カテゴリ別着信音対応Flutterアプリ（Phase 4 完成版）
+publish_to: 'none'
+version: 4.0.0+4
+
+environment:
+  sdk: '>=3.4.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  firebase_core: ^3.6.0
+  firebase_auth: ^5.3.1
+  cloud_firestore: ^5.4.4
+  firebase_storage: ^12.3.4
+  firebase_messaging: ^15.1.3
+  flutter_webrtc: ^0.11.7
+  livekit_client: ^2.3.1
+  flutter_callkit_incoming: ^2.0.4+2
+  audioplayers: ^6.1.0
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^6.0.2
+  image_picker: ^1.1.2
+  http: ^1.2.2
+  shared_preferences: ^2.3.2
+  uuid: ^4.5.1
+  intl: ^0.19.0
+  share_plus: ^10.0.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/ringtones/
