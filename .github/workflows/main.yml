@@ -1,0 +1,43 @@
+name: Build Flutter Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: 'stable'
+
+      - name: Generate Android scaffold if missing
+        run: |
+          if [ ! -d "android" ]; then
+            flutter create . --platforms=android --org jp.tsunagarucall
+          fi
+
+      - name: Patch AndroidManifest, Gradle SDK & copy category ringtones
+        run: python3 native-config/android/patch_manifest.py
+
+      - name: Install Flutter packages
+        run: flutter pub get
+
+      - name: Build Debug APK
+        run: flutter build apk --debug
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tsunagaru-line-flutter-phase4-apk
+          path: build/app/outputs/flutter-apk/*.apk
