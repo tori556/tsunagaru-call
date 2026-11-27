@@ -19,11 +19,42 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', 'pubspec.yaml') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
       - uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
+          cache: true
 
-      - name: Prepare project & dependencies
+      - name: Restore signing keystore & Firebase config (optional secrets)
+        env:
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          GOOGLE_SERVICES_JSON_B64: ${{ secrets.GOOGLE_SERVICES_JSON_B64 }}
+        run: |
+          if [ -n "${ANDROID_KEYSTORE_B64:-}" ]; then
+            mkdir -p "$HOME/.android"
+            printf '%s' "$ANDROID_KEYSTORE_B64" | tr -d '\r\n' | base64 -d > "$HOME/.android/debug.keystore"
+            echo "[secrets] Restored fixed debug.keystore."
+          else
+            echo "[secrets] ANDROID_KEYSTORE_B64 not set; using default debug keystore."
+          fi
+
+          if [ -n "${GOOGLE_SERVICES_JSON_B64:-}" ]; then
+            mkdir -p android/app
+            printf '%s' "$GOOGLE_SERVICES_JSON_B64" | tr -d '\r\n' | base64 -d > android/app/google-services.json
+            echo "[secrets] Restored android/app/google-services.json."
+          else
+            echo "[secrets] GOOGLE_SERVICES_JSON_B64 not set; building in Firebase-optional mode."
+          fi
+
+      - name: Prepare project, permissions & dependencies
         run: |
           cat << 'EOF' > /tmp/prepare_all.py
           import re
@@ -32,16 +63,8 @@ jobs:
           p = Path("pubspec.yaml")
           if p.exists():
               txt = p.read_text(encoding="utf-8", errors="ignore")
-              txt = re.sub(
-                  r"(?m)^(\s*flutter_webrtc:\s*)\S.*$",
-                  r"\g<1>^0.12.12+hotfix.1",
-                  txt,
-              )
-              txt = re.sub(
-                  r"(?m)^(\s*livekit_client:\s*)\S.*$",
-                  r"\g<1>^2.3.1",
-                  txt,
-              )
+              txt = re.sub(r"(?m)^(\s*flutter_webrtc:\s*)\S.*$", r"\g<1>^0.12.12+hotfix.1", txt)
+              txt = re.sub(r"(?m)^(\s*livekit_client:\s*)\S.*$", r"\g<1>^2.3.1", txt)
               p.write_text(txt, encoding="utf-8")
           EOF
           python3 /tmp/prepare_all.py
@@ -54,14 +77,127 @@ jobs:
             python3 native-config/android/patch_manifest.py
           fi
 
+          cat << 'EOF' > /tmp/patch_android_extras.py
+          import json
+          import re
+          from pathlib import Path
+
+          src_main = Path("android/app/src/main")
+          if src_main.exists():
+              for kt in src_main.rglob("MainActivity.kt"):
+                  txt = kt.read_text(encoding="utf-8", errors="ignore")
+                  orig = txt
+                  txt = txt.replace(
+                      "io.flutter.embedding.android.FlutterActivity",
+                      "io.flutter.embedding.android.FlutterFragmentActivity",
+                  )
+                  txt = re.sub(r":\s*FlutterActivity\s*\(\s*\)", ": FlutterFragmentActivity()", txt)
+                  if txt != orig:
+                      kt.write_text(txt, encoding="utf-8")
+
+              for jv in src_main.rglob("MainActivity.java"):
+                  txt = jv.read_text(encoding="utf-8", errors="ignore")
+                  orig = txt
+                  txt = txt.replace(
+                      "io.flutter.embedding.android.FlutterActivity",
+                      "io.flutter.embedding.android.FlutterFragmentActivity",
+                  )
+                  txt = re.sub(r"extends\s+FlutterActivity\b", "extends FlutterFragmentActivity", txt)
+                  if txt != orig:
+                      jv.write_text(txt, encoding="utf-8")
+
+          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          if manifest.exists():
+              mtxt = manifest.read_text(encoding="utf-8", errors="ignore")
+              orig_m = mtxt
+              permissions = [
+                  "android.permission.INTERNET",
+                  "android.permission.ACCESS_NETWORK_STATE",
+                  "android.permission.CAMERA",
+                  "android.permission.RECORD_AUDIO",
+                  "android.permission.MODIFY_AUDIO_SETTINGS",
+                  "android.permission.BLUETOOTH_CONNECT",
+                  "android.permission.POST_NOTIFICATIONS",
+                  "android.permission.USE_BIOMETRIC",
+                  "android.permission.USE_FINGERPRINT",
+                  "android.permission.REQUEST_INSTALL_PACKAGES",
+                  "android.permission.USE_FULL_SCREEN_INTENT",
+                  "android.permission.FOREGROUND_SERVICE",
+                  "android.permission.WAKE_LOCK",
+                  "android.permission.VIBRATE",
+                  "android.permission.READ_MEDIA_IMAGES",
+                  "android.permission.READ_MEDIA_VIDEO",
+                  "android.permission.READ_MEDIA_AUDIO",
+                  "android.permission.READ_EXTERNAL_STORAGE",
+              ]
+              perm_inserts = [f'    <uses-permission android:name="{perm}" />' for perm in permissions if perm not in mtxt]
+              if perm_inserts:
+                  mtxt = re.sub(r"(<application\b)", "\n".join(perm_inserts) + "\n" + r"\1", mtxt, count=1)
+
+              if "android:showWhenLocked" not in mtxt:
+                  mtxt = re.sub(
+                      r'(<activity[^>]*android:name="\.MainActivity")',
+                      r'\1\n            android:showWhenLocked="true"\n            android:turnScreenOn="true"',
+                      mtxt,
+                      count=1,
+                  )
+
+              query_items = [
+                  ('works.jubilee.timetree', '        <package android:name="works.jubilee.timetree" />'),
+                  ('jp.naver.line.android', '        <package android:name="jp.naver.line.android" />'),
+                  ('android:scheme="timetree"', '        <intent>\n            <action android:name="android.intent.action.VIEW" />\n            <data android:scheme="timetree" />\n        </intent>'),
+                  ('android:scheme="line"', '        <intent>\n            <action android:name="android.intent.action.VIEW" />\n            <data android:scheme="line" />\n        </intent>'),
+                  ('android:scheme="https"', '        <intent>\n            <action android:name="android.intent.action.VIEW" />\n            <data android:scheme="https" />\n        </intent>'),
+              ]
+              missing_queries = [snippet for key, snippet in query_items if key not in mtxt]
+              if missing_queries:
+                  q_body = "\n".join(missing_queries) + "\n"
+                  if "</queries>" in mtxt:
+                      mtxt = mtxt.replace("</queries>", q_body + "    </queries>", 1)
+                  else:
+                      mtxt = re.sub(r"(<application\b)", "    <queries>\n" + q_body + "    </queries>\n" + r"\1", mtxt, count=1)
+
+              if mtxt != orig_m:
+                  manifest.write_text(mtxt, encoding="utf-8")
+
+          # Auto-enable Google Services plugin & verify package name when google-services.json exists
+          gs_json = Path("android/app/google-services.json")
+          if gs_json.exists():
+              try:
+                  gs_data = json.loads(gs_json.read_text(encoding="utf-8", errors="ignore"))
+                  pkgs = [
+                      c.get("client_info", {}).get("android_client_info", {}).get("package_name", "")
+                      for c in gs_data.get("client", [])
+                  ]
+                  print(f"[patch] google-services.json packages: {pkgs}")
+              except Exception as exc:
+                  print(f"[patch] Warning reading google-services.json: {exc}")
+
+              for sfile in (Path("android/settings.gradle.kts"), Path("android/settings.gradle")):
+                  if sfile.exists():
+                      stxt = sfile.read_text(encoding="utf-8", errors="ignore")
+                      if "com.google.gms.google-services" not in stxt:
+                          line = '    id("com.google.gms.google-services") version "4.4.2" apply false' if sfile.suffix == ".kts" else '    id "com.google.gms.google-services" version "4.4.2" apply false'
+                          stxt = re.sub(r"(plugins\s*\{)", rf"\1\n{line}", stxt, count=1)
+                          sfile.write_text(stxt, encoding="utf-8")
+              for afile in (Path("android/app/build.gradle.kts"), Path("android/app/build.gradle")):
+                  if afile.exists():
+                      atxt = afile.read_text(encoding="utf-8", errors="ignore")
+                      if "com.google.gms.google-services" not in atxt:
+                          line = '    id("com.google.gms.google-services")' if afile.suffix == ".kts" else '    id "com.google.gms.google-services"'
+                          atxt = re.sub(r"(plugins\s*\{)", rf"\1\n{line}", atxt, count=1)
+                          afile.write_text(atxt, encoding="utf-8")
+              print("[patch] Google Services plugin enabled.")
+          EOF
+          python3 /tmp/patch_android_extras.py
+
           yes | flutter doctor --android-licenses >/dev/null 2>&1 || true
 
-      - name: Auto-repair compatibility & build APK
+      - name: Auto-repair compatibility, analyze, test & build APK
         run: |
           mkdir -p "$HOME/.gradle/init.d"
           cat << 'EOF' > "$HOME/.gradle/init.d/tsunagaru_compat.gradle"
           def targetCompileSdk = (System.getenv("TSUNAGARU_COMPILE_SDK") ?: "36").toInteger()
-
           def ensureNamespace = { proj, ext ->
               try {
                   def ns = null
@@ -73,14 +209,11 @@ jobs:
                           def m = (manifestFile.text =~ /package\s*=\s*["']([^"']+)["']/)
                           if (m.find()) pkg = m.group(1)
                       }
-                      if (!pkg) {
-                          pkg = "jp.tsunagarucall.plugin." + proj.name.replaceAll(/[^a-zA-Z0-9_]/, "_").toLowerCase()
-                      }
+                      if (!pkg) pkg = "jp.tsunagarucall.plugin." + proj.name.replaceAll(/[^a-zA-Z0-9_]/, "_").toLowerCase()
                       ext.namespace = pkg
                   }
               } catch (Throwable ignored) {}
           }
-
           def ensureCompileSdk = { proj, ext ->
               try {
                   Integer current = null
@@ -100,22 +233,17 @@ jobs:
                       } catch (Throwable ignored) {}
                   }
                   if (current == null || current < targetCompileSdk) {
-                      try {
-                          ext.compileSdk = targetCompileSdk
-                      } catch (Throwable ignored) {
+                      try { ext.compileSdk = targetCompileSdk } catch (Throwable ignored) {
                           try { ext.compileSdkVersion(targetCompileSdk) } catch (Throwable ignored2) {}
                       }
                   }
               } catch (Throwable ignored) {}
           }
-
           gradle.beforeProject { proj ->
               ["com.android.application", "com.android.library"].each { pluginId ->
                   proj.plugins.withId(pluginId) {
                       def earlyExt = proj.extensions.findByName("android")
-                      if (earlyExt != null) {
-                          ensureNamespace(proj, earlyExt)
-                      }
+                      if (earlyExt != null) ensureNamespace(proj, earlyExt)
                       def hooked = false
                       try {
                           def ac = proj.extensions.findByName("androidComponents")
@@ -145,12 +273,7 @@ jobs:
 
           cat << 'EOF' > /tmp/apply_compat.py
           from __future__ import annotations
-
-          import os
-          import re
-          import shutil
-          import subprocess
-          import sys
+          import os, re, shutil, subprocess, sys
           from pathlib import Path
 
           state = {
@@ -159,6 +282,8 @@ jobs:
               "gradle_min": "8.11.1",
               "sdk_min": 36,
               "target_sdk_min": 35,
+              "min_sdk_min": 24,
+              "desugar_lib_ver": "2.1.4",
               "disable_builtin_kotlin": False,
           }
 
@@ -167,16 +292,10 @@ jobs:
               return (nums + [0, 0, 0])[:3]
 
           def ensure_pub_get():
-              res = subprocess.run(["flutter", "pub", "get"], text=True)
-              if res.returncode == 0:
+              if subprocess.run(["flutter", "pub", "get"], text=True).returncode == 0:
                   return
-
-              print("[compat] pub get failed; attempting flutter pub upgrade...")
-              res = subprocess.run(["flutter", "pub", "upgrade"], text=True)
-              if res.returncode == 0:
+              if subprocess.run(["flutter", "pub", "upgrade"], text=True).returncode == 0:
                   return
-
-              print("[compat] Relaxing flutter_webrtc / livekit_client constraints for future Flutter compatibility...")
               p = Path("pubspec.yaml")
               if p.exists():
                   txt = p.read_text(encoding="utf-8", errors="ignore")
@@ -185,6 +304,14 @@ jobs:
                   p.write_text(txt, encoding="utf-8")
               subprocess.run(["flutter", "pub", "upgrade", "--major-versions"], check=False)
               subprocess.run(["flutter", "pub", "get"], check=True)
+
+          def run_checks():
+              res = subprocess.run(["flutter", "analyze", "--no-fatal-infos", "--no-fatal-warnings"], text=True)
+              if res.returncode != 0:
+                  sys.exit(res.returncode)
+              tres = subprocess.run(["flutter", "test"], text=True)
+              if tres.returncode != 0:
+                  sys.exit(tres.returncode)
 
           def find_android_sdk() -> Path | None:
               for key in ("ANDROID_HOME", "ANDROID_SDK_ROOT"):
@@ -213,66 +340,41 @@ jobs:
               exact_dir = platforms_dir / f"android-{sdk_ver}"
               if exact_dir.exists():
                   return
-
               sdkmanager = find_sdkmanager(sdk_root)
               if sdkmanager:
-                  subprocess.run(
-                      f'yes | "{sdkmanager}" --licenses >/dev/null 2>&1 || true',
-                      shell=True,
-                      check=False,
-                  )
-                  res = subprocess.run(
-                      [sdkmanager, "--list"],
-                      capture_output=True,
-                      text=True,
-                      check=False,
-                  )
-                  available = res.stdout or ""
-                  pkg_to_install = None
-                  if re.search(rf"platforms;android-{sdk_ver}\b", available):
-                      pkg_to_install = f"platforms;android-{sdk_ver}"
-                  else:
+                  subprocess.run(f'yes | "{sdkmanager}" --licenses >/dev/null 2>&1 || true', shell=True, check=False)
+                  available = subprocess.run([sdkmanager, "--list"], capture_output=True, text=True, check=False).stdout or ""
+                  pkg_to_install = f"platforms;android-{sdk_ver}" if re.search(rf"platforms;android-{sdk_ver}\b", available) else None
+                  if not pkg_to_install:
                       minors = re.findall(rf"platforms;android-{sdk_ver}\.\d+", available)
                       if minors:
                           pkg_to_install = sorted(set(minors), key=ver_tuple)[-1]
                   if pkg_to_install:
-                      print(f"[compat] Installing Android SDK package: {pkg_to_install}")
-                      subprocess.run(
-                          f'yes | "{sdkmanager}" "{pkg_to_install}"',
-                          shell=True,
-                          check=False,
-                      )
-
+                      subprocess.run(f'yes | "{sdkmanager}" "{pkg_to_install}"', shell=True, check=False)
               if not exact_dir.exists() and platforms_dir.exists():
                   minor_dirs = sorted(platforms_dir.glob(f"android-{sdk_ver}.*"), key=lambda p: ver_tuple(p.name))
                   if minor_dirs:
                       try:
                           exact_dir.symlink_to(minor_dirs[-1])
-                          print(f"[compat] Linked {exact_dir.name} -> {minor_dirs[-1].name}")
                       except OSError:
                           pass
 
           def patch_gradle_file(path: Path, is_plugin: bool = False):
               txt = path.read_text(encoding="utf-8", errors="ignore")
               orig = txt
-              agp_min = state["agp_min"]
-              kotlin_min = state["kotlin_min"]
-              sdk_min = str(state["sdk_min"])
-              target_min = str(state["target_sdk_min"])
+              agp_min, kotlin_min = state["agp_min"], state["kotlin_min"]
+              sdk_min, target_min, min_sdk = str(state["sdk_min"]), str(state["target_sdk_min"]), str(state["min_sdk_min"])
+              desugar_ver = state["desugar_lib_ver"]
+              is_kts = path.suffix == ".kts"
+              is_app_module = (not is_plugin) and path.parent.name == "app" and path.name in ("build.gradle", "build.gradle.kts")
 
               def repl_single(pattern, target):
                   nonlocal txt
-                  def _sub(m):
-                      prefix, cur = m.group(1), m.group(2)
-                      return f"{prefix}{target}" if ver_tuple(cur) < ver_tuple(target) else m.group(0)
-                  txt = re.sub(pattern, _sub, txt)
+                  txt = re.sub(pattern, lambda m: f"{m.group(1)}{target}" if ver_tuple(m.group(2)) < ver_tuple(target) else m.group(0), txt)
 
               def repl_pair(pattern, target):
                   nonlocal txt
-                  def _sub(m):
-                      pre, cur, suf = m.group(1), m.group(2), m.group(3)
-                      return f"{pre}{target}{suf}" if ver_tuple(cur) < ver_tuple(target) else m.group(0)
-                  txt = re.sub(pattern, _sub, txt)
+                  txt = re.sub(pattern, lambda m: f"{m.group(1)}{target}{m.group(3)}" if ver_tuple(m.group(2)) < ver_tuple(target) else m.group(0), txt)
 
               repl_single(r'(com\.android\.application["\']\s*\)?\s*\.?\s*version\s*\(?\s*["\'])([0-9]+\.[0-9]+(?:\.[0-9]+)?)', agp_min)
               repl_single(r'(com\.android\.library["\']\s*\)?\s*\.?\s*version\s*\(?\s*["\'])([0-9]+\.[0-9]+(?:\.[0-9]+)?)', agp_min)
@@ -280,7 +382,6 @@ jobs:
               repl_single(r'(org\.jetbrains\.kotlin\.android["\']\s*\)?\s*\.?\s*version\s*\(?\s*["\'])([0-9]+\.[0-9]+(?:\.[0-9]+)?)', kotlin_min)
               repl_single(r'(kotlin-gradle-plugin:)([0-9]+\.[0-9]+(?:\.[0-9]+)?)', kotlin_min)
               repl_pair(r'(ext\.kotlin_version\s*=\s*["\'])([0-9]+\.[0-9]+(?:\.[0-9]+)?)(["\'])', kotlin_min)
-
               repl_pair(r'(compileSdk\s*=?\s*\(?["\']?(?:android-)?)([0-9]+)(["\']?\)?)', sdk_min)
               repl_pair(r'(compileSdkVersion\s*\(?["\']?(?:android-)?)([0-9]+)(["\']?\)?)', sdk_min)
               repl_single(r'(compileSdkVersion\s+)([0-9]+)', sdk_min)
@@ -288,6 +389,35 @@ jobs:
               if not is_plugin:
                   repl_pair(r'(targetSdk\s*=?\s*\(?["\']?(?:android-)?)([0-9]+)(["\']?\)?)', target_min)
                   repl_pair(r'(targetSdkVersion\s*\(?["\']?(?:android-)?)([0-9]+)(["\']?\)?)', target_min)
+
+              if is_app_module:
+                  if is_kts:
+                      txt = re.sub(r'(minSdk\s*=\s*)flutter\.minSdkVersion\b', rf'\g<1>{min_sdk}', txt)
+                      txt = re.sub(r'(minSdkVersion\s*\(\s*)flutter\.minSdkVersion(\s*\))', rf'\g<1>{min_sdk}\2', txt)
+                  else:
+                      txt = re.sub(r'(minSdk\s*=?\s*)flutter\.minSdkVersion\b', rf'\g<1>{min_sdk}', txt)
+                      txt = re.sub(r'(minSdkVersion\s+)flutter\.minSdkVersion\b', rf'\g<1>{min_sdk}', txt)
+                  repl_pair(r'(minSdk\s*=?\s*\(?)([0-9]+)(\)?)', min_sdk)
+                  repl_pair(r'(minSdkVersion\s*\(?)([0-9]+)(\)?)', min_sdk)
+
+                  if is_kts:
+                      if "isCoreLibraryDesugaringEnabled" not in txt:
+                          if re.search(r"compileOptions\s*\{", txt):
+                              txt = re.sub(r"(compileOptions\s*\{)", r"\1\n        isCoreLibraryDesugaringEnabled = true", txt, count=1)
+                          else:
+                              txt = re.sub(r"(android\s*\{)", r"\1\n    compileOptions {\n        isCoreLibraryDesugaringEnabled = true\n    }", txt, count=1)
+                      if "coreLibraryDesugaring(" not in txt:
+                          dep_line = f'    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:{desugar_ver}")'
+                          txt = re.sub(r"(?m)^(dependencies\s*\{)", rf"\1\n{dep_line}", txt, count=1) if re.search(r"(?m)^dependencies\s*\{", txt) else txt.rstrip() + f"\n\ndependencies {{\n{dep_line}\n}}\n"
+                  else:
+                      if "coreLibraryDesugaringEnabled" not in txt:
+                          if re.search(r"compileOptions\s*\{", txt):
+                              txt = re.sub(r"(compileOptions\s*\{)", r"\1\n        coreLibraryDesugaringEnabled true", txt, count=1)
+                          else:
+                              txt = re.sub(r"(android\s*\{)", r"\1\n    compileOptions {\n        coreLibraryDesugaringEnabled true\n    }", txt, count=1)
+                      if "coreLibraryDesugaring " not in txt and "coreLibraryDesugaring(" not in txt:
+                          dep_line = f"    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:{desugar_ver}'"
+                          txt = re.sub(r"(?m)^(dependencies\s*\{)", rf"\1\n{dep_line}", txt, count=1) if re.search(r"(?m)^dependencies\s*\{", txt) else txt.rstrip() + f"\n\ndependencies {{\n{dep_line}\n}}\n"
 
               if "namespace" not in txt and ("com.android.library" in txt or "com.android.application" in txt):
                   manifest = path.parent / "src" / "main" / "AndroidManifest.xml"
@@ -298,49 +428,42 @@ jobs:
                           pkg = m.group(1)
                   if not pkg:
                       pkg = "jp.tsunagarucall.plugin." + re.sub(r"[^a-zA-Z0-9_]", "_", path.parent.name).lower()
-                  if path.suffix == ".kts":
-                      txt = re.sub(r"(android\s*\{)", rf'\1\n    namespace = "{pkg}"', txt, count=1)
-                  else:
-                      txt = re.sub(r"(android\s*\{)", rf'\1\n    namespace "{pkg}"', txt, count=1)
+                  txt = re.sub(r"(android\s*\{)", rf'\1\n    namespace = "{pkg}"' if is_kts else rf'\1\n    namespace "{pkg}"', txt, count=1)
 
               if txt != orig:
                   path.write_text(txt, encoding="utf-8")
 
+          def patch_gradle_properties():
+              gp = Path("android/gradle.properties")
+              if not gp.exists():
+                  return
+              gtxt = gp.read_text(encoding="utf-8", errors="ignore")
+              orig = gtxt
+              jvm_line = "org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8"
+              gtxt = re.sub(r"(?m)^org\.gradle\.jvmargs=.*$", jvm_line, gtxt) if re.search(r"(?m)^org\.gradle\.jvmargs=", gtxt) else gtxt.rstrip() + "\n" + jvm_line + "\n"
+              if state["disable_builtin_kotlin"] and "android.builtInKotlin" not in gtxt:
+                  gtxt = gtxt.rstrip() + "\nandroid.builtInKotlin=false\n"
+              if gtxt != orig:
+                  gp.write_text(gtxt, encoding="utf-8")
+
           def patch_all():
               ensure_android_platform(state["sdk_min"])
-
               android_dir = Path("android")
               if android_dir.exists():
                   for path in android_dir.rglob("*"):
-                      if path.is_file() and (
-                          path.suffix in {".gradle", ".kts"}
-                          or path.name in ("build.gradle", "settings.gradle")
-                      ):
+                      if path.is_file() and (path.suffix in {".gradle", ".kts"} or path.name in ("build.gradle", "settings.gradle")):
                           patch_gradle_file(path, is_plugin=False)
-
               wrapper = Path("android/gradle/wrapper/gradle-wrapper.properties")
               if wrapper.exists():
                   wtxt = wrapper.read_text(encoding="utf-8", errors="ignore")
                   gmin = state["gradle_min"]
-                  def _sub_gradle(m):
-                      cur, kind = m.group(1), m.group(2)
-                      new_v = gmin if ver_tuple(cur) < ver_tuple(gmin) else cur
-                      return f"gradle-{new_v}-{kind}.zip"
-                  new_wtxt = re.sub(r"gradle-([0-9]+(?:\.[0-9]+)+)-(bin|all)\.zip", _sub_gradle, wtxt)
+                  new_wtxt = re.sub(r"gradle-([0-9]+(?:\.[0-9]+)+)-(bin|all)\.zip", lambda m: f"gradle-{gmin if ver_tuple(m.group(1)) < ver_tuple(gmin) else m.group(1)}-{m.group(2)}.zip", wtxt)
                   if new_wtxt != wtxt:
                       wrapper.write_text(new_wtxt, encoding="utf-8")
-
-              if state["disable_builtin_kotlin"]:
-                  gp = Path("android/gradle.properties")
-                  if gp.exists():
-                      gtxt = gp.read_text(encoding="utf-8", errors="ignore")
-                      if "android.builtInKotlin" not in gtxt:
-                          gp.write_text(gtxt.rstrip() + "\nandroid.builtInKotlin=false\n", encoding="utf-8")
-
+              patch_gradle_properties()
               pub_dirs = {Path.home() / ".pub-cache"}
-              env_pc = os.environ.get("PUB_CACHE")
-              if env_pc:
-                  pub_dirs.add(Path(env_pc))
+              if os.environ.get("PUB_CACHE"):
+                  pub_dirs.add(Path(os.environ["PUB_CACHE"]))
               for pub_cache in pub_dirs:
                   if pub_cache.exists():
                       for gfile in pub_cache.rglob("build.gradle*"):
@@ -350,56 +473,19 @@ jobs:
                               except Exception:
                                   pass
 
-          def print_summary(lines: list[str]):
-              keywords = (
-                  "FAILURE:",
-                  "What went wrong:",
-                  "Execution failed for task",
-                  "e: ",
-                  "error:",
-                  "Error:",
-                  "Exception",
-                  "compileSdk",
-                  "namespace",
-                  "Could not find",
-                  "Failed to find target",
-                  "Unresolved reference",
-                  "Minimum supported Gradle",
-                  "builtInKotlin",
-              )
-              matched = [line for line in lines if any(k in line for k in keywords)]
-              print("\n=== KEY BUILD DIAGNOSTICS ===")
-              for line in matched[-100:]:
-                  print(line)
-              print("\n=== TAIL OUTPUT ===")
-              for line in lines[-120:]:
-                  print(line)
-              print("=== END DIAGNOSTICS ===\n")
-
           def run_build() -> tuple[int, str]:
               env = os.environ.copy()
               env["TSUNAGARU_COMPILE_SDK"] = str(state["sdk_min"])
               build_num = os.environ.get("GITHUB_RUN_NUMBER", "1")
               repo_slug = os.environ.get("GITHUB_REPOSITORY", "")
-              print(
-                  f"[compat] Building APK (build #{build_num}) with compileSdk>={state['sdk_min']}, "
-                  f"AGP>={state['agp_min']}, Gradle>={state['gradle_min']}, Kotlin>={state['kotlin_min']}"
-              )
               proc = subprocess.Popen(
                   [
-                      "flutter",
-                      "build",
-                      "apk",
-                      "--debug",
+                      "flutter", "build", "apk", "--debug",
                       f"--build-number={build_num}",
                       f"--dart-define=APP_BUILD_NUMBER={build_num}",
                       f"--dart-define=GITHUB_REPO={repo_slug}",
                   ],
-                  stdout=subprocess.PIPE,
-                  stderr=subprocess.STDOUT,
-                  text=True,
-                  bufsize=1,
-                  env=env,
+                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, env=env,
               )
               lines = []
               assert proc.stdout is not None
@@ -407,75 +493,33 @@ jobs:
                   sys.stdout.write(line)
                   sys.stdout.flush()
                   lines.append(line.rstrip("\n"))
-              rc = proc.wait()
-              if rc != 0:
-                  print_summary(lines)
-              return rc, "\n".join(lines)
+              return proc.wait(), "\n".join(lines)
 
           def adapt_from_error(log_text: str) -> bool:
               changed = False
-
-              sdk_reqs = []
-              for pat in (
-                  r"compileSdk\s+(?:of\s+at\s+least\s+|version\s+)(\d+)",
-                  r"compile against version\s+(\d+)\s+or later",
-                  r"minCompileSdk[^\d]*(\d+)",
-              ):
-                  sdk_reqs.extend(int(x) for x in re.findall(pat, log_text, re.IGNORECASE))
+              sdk_reqs = [int(x) for pat in (r"compileSdk\s+(?:of\s+at\s+least\s+|version\s+)(\d+)", r"compile against version\s+(\d+)\s+or later", r"minCompileSdk[^\d]*(\d+)") for x in re.findall(pat, log_text, re.IGNORECASE)]
               if sdk_reqs and max(sdk_reqs) > state["sdk_min"]:
-                  state["sdk_min"] = max(sdk_reqs)
-                  print(f"[compat] Auto-bumping compileSdk -> {state['sdk_min']}")
-                  changed = True
-
-              gradle_reqs = re.findall(r"Minimum supported Gradle version is\s+([0-9]+(?:\.[0-9]+)+)", log_text)
-              if gradle_reqs:
-                  top_g = sorted(gradle_reqs, key=ver_tuple)[-1]
-                  if ver_tuple(top_g) > ver_tuple(state["gradle_min"]):
-                      state["gradle_min"] = top_g
-                      print(f"[compat] Auto-bumping Gradle -> {state['gradle_min']}")
-                      changed = True
-
-              agp_reqs = re.findall(
-                  r"(?:Android Gradle Plugin(?:\s*\(AGP\))?|AGP)\s+(?:version\s+)?([0-9]+\.[0-9]+(?:\.[0-9]+)?)\s+or\s+(?:higher|later|newer)",
-                  log_text,
-                  re.IGNORECASE,
-              )
-              if agp_reqs:
-                  top_agp = sorted(agp_reqs, key=ver_tuple)[-1]
-                  if ver_tuple(top_agp) > ver_tuple(state["agp_min"]):
-                      state["agp_min"] = top_agp
-                      print(f"[compat] Auto-bumping AGP -> {state['agp_min']}")
-                      changed = True
-
-              kt_reqs = re.findall(
-                  r"Kotlin(?:\s+Gradle\s+Plugin)?\s+(?:version\s+)?([0-9]+\.[0-9]+(?:\.[0-9]+)?)\s+or\s+(?:higher|later|newer)",
-                  log_text,
-                  re.IGNORECASE,
-              )
-              if kt_reqs:
-                  top_kt = sorted(kt_reqs, key=ver_tuple)[-1]
-                  if ver_tuple(top_kt) > ver_tuple(state["kotlin_min"]):
-                      state["kotlin_min"] = top_kt
-                      print(f"[compat] Auto-bumping Kotlin -> {state['kotlin_min']}")
-                      changed = True
-
+                  state["sdk_min"] = max(sdk_reqs); changed = True
+              min_reqs = [int(x) for pat in (r"uses-sdk:minSdkVersion\s+\d+\s+cannot be smaller than version\s+(\d+)", r"minSdk(?:Version)?\s+(?:of\s+at\s+least\s+|version\s+)?(\d+)\s+or\s+(?:higher|later)") for x in re.findall(pat, log_text, re.IGNORECASE)]
+              if min_reqs and max(min_reqs) > state["min_sdk_min"]:
+                  state["min_sdk_min"] = max(min_reqs); changed = True
+              g_reqs = re.findall(r"Minimum supported Gradle version is\s+([0-9]+(?:\.[0-9]+)+)", log_text)
+              if g_reqs and ver_tuple(sorted(g_reqs, key=ver_tuple)[-1]) > ver_tuple(state["gradle_min"]):
+                  state["gradle_min"] = sorted(g_reqs, key=ver_tuple)[-1]; changed = True
               if not state["disable_builtin_kotlin"] and re.search(r"builtInKotlin|built-in Kotlin", log_text, re.IGNORECASE):
-                  state["disable_builtin_kotlin"] = True
-                  print("[compat] Enabling android.builtInKotlin=false for legacy plugin compatibility")
-                  changed = True
-
+                  state["disable_builtin_kotlin"] = True; changed = True
               return changed
 
           patch_all()
           ensure_pub_get()
           patch_all()
+          run_checks()
 
           for attempt in range(1, 4):
               rc, log_text = run_build()
               if rc == 0:
                   sys.exit(0)
               if attempt < 3 and adapt_from_error(log_text):
-                  print(f"[compat] Retrying build (attempt {attempt + 1}/3)...")
                   patch_all()
                   ensure_pub_get()
               else:
@@ -486,7 +530,7 @@ jobs:
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: tsunagaru-line-flutter-phase4-apk
+          name: tsunagaru-call-refined-build-${{ github.run_number }}
           path: build/app/outputs/flutter-apk/*.apk
           if-no-files-found: error
 
@@ -503,8 +547,10 @@ jobs:
 
           cat << EOF > /tmp/version.json
           {
+            "versionName": "1.0.${{ github.run_number }}",
             "buildNumber": ${{ github.run_number }},
             "updatedAt": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "notes": "第1〜6ステップ強化版（双方向同期・進捗表示・安全性改善 Build #${{ github.run_number }}）",
             "apkUrl": "https://github.com/${{ github.repository }}/releases/download/latest-android/tsunagaru-latest.apk"
           }
           EOF

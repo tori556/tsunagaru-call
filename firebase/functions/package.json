@@ -1,11 +1,17 @@
 {
-  "name": "tsunagaru-line-functions-p4",
-  "version": "4.0.0",
-  "engines": {
-    "node": "20"
+  "name": "tsunagaru-call-functions",
+  "engines": { "node": "20" },
+  "main": "lib/index.js",
+  "scripts": {
+    "build": "tsc",
+    "deploy": "firebase deploy --only functions,firestore:rules,storage"
   },
   "dependencies": {
-    "firebase-admin": "^12.5.0",
-    "firebase-functions": "^5.1.1"
+    "firebase-admin": "^13.0.1",
+    "firebase-functions": "^6.1.1",
+    "livekit-server-sdk": "^2.9.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
   }
 }
