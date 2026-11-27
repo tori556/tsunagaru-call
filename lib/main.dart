@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'dart:ui';
-
+ 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
-
+ 
 import 'models.dart';
 import 'screens/call_screens.dart';
 import 'screens/chat_screen.dart';
@@ -13,28 +13,28 @@ import 'screens/settings_screen.dart';
 import 'services/cloud_sync_service.dart';
 import 'services/core_services.dart';
 import 'store/app_store.dart';
-
+ 
 void main() {
   runZonedGuarded<void>(
     () {
       WidgetsFlutterBinding.ensureInitialized();
-
+ 
       try {
         FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
       } catch (_) {}
-
+ 
       FlutterError.onError = (FlutterErrorDetails details) {
         ErrorGuard.record(
           'UIエラーを吸収: ${details.exceptionAsString()}',
           details.stack,
         );
       };
-
-      PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+ 
+      PlatformDispatcher.instance.onError = (dynamic error, StackTrace stack) {
         ErrorGuard.record('システムエラーを吸収: $error', stack);
         return true;
       };
-
+ 
       ErrorWidget.builder = (FlutterErrorDetails details) {
         return const Material(
           color: Color(0xFFFFF8E1),
@@ -50,33 +50,33 @@ void main() {
           ),
         );
       };
-
+ 
       runApp(const TsunagaruCallApp());
     },
-    (Object error, StackTrace stack) {
+    (dynamic error, StackTrace stack) {
       ErrorGuard.record('非同期エラーを吸収: $error', stack);
     },
   );
 }
-
+ 
 class TsunagaruCallApp extends StatefulWidget {
   const TsunagaruCallApp({super.key});
-
+ 
   @override
   State<TsunagaruCallApp> createState() => _TsunagaruCallAppState();
 }
-
+ 
 class _TsunagaruCallAppState extends State<TsunagaruCallApp>
     with WidgetsBindingObserver {
   final AppStore _store = AppStore();
-
+ 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _store.init();
   }
-
+ 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused ||
@@ -86,14 +86,14 @@ class _TsunagaruCallAppState extends State<TsunagaruCallApp>
       _store.handleAppResumed();
     }
   }
-
+ 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _store.dispose();
     super.dispose();
   }
-
+ 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -109,7 +109,7 @@ class _TsunagaruCallAppState extends State<TsunagaruCallApp>
           if (_store.lockEnabled && !_store.isUnlocked) {
             return LockOverlayScreen(store: _store);
           }
-
+ 
           if (_store.activeIncomingCall != null) {
             final call = _store.activeIncomingCall!;
             return IncomingCallScreen(
@@ -132,22 +132,22 @@ class _TsunagaruCallAppState extends State<TsunagaruCallApp>
               },
             );
           }
-
+ 
           return MainShell(store: _store);
         },
       ),
     );
   }
 }
-
+ 
 class MainShell extends StatefulWidget {
   const MainShell({super.key, required this.store});
   final AppStore store;
-
+ 
   @override
   State<MainShell> createState() => _MainShellState();
 }
-
+ 
 class _MainShellState extends State<MainShell> {
   int _tabIndex = 0;
   String _selectedCategory = 'すべて';
@@ -155,13 +155,13 @@ class _MainShellState extends State<MainShell> {
     ConnectivityResult.none,
   ];
   StreamSubscription<List<ConnectivityResult>>? _connSub;
-
+ 
   @override
   void initState() {
     super.initState();
     _initConn();
   }
-
+ 
   Future<void> _initConn() async {
     try {
       final res = await Connectivity().checkConnectivity();
@@ -170,19 +170,19 @@ class _MainShellState extends State<MainShell> {
         (List<ConnectivityResult> r) {
           if (mounted) setState(() => _connectivity = r);
         },
-        onError: (Object e, StackTrace s) => ErrorGuard.record('回線監視: $e', s),
+        onError: (dynamic e, StackTrace s) => ErrorGuard.record('回線監視: $e', s),
       );
     } catch (e, s) {
       ErrorGuard.record('回線初期化: $e', s);
     }
   }
-
+ 
   @override
   void dispose() {
     _connSub?.cancel();
     super.dispose();
   }
-
+ 
   Future<void> _startGroupCall(ChatGroup group, {required bool video}) async {
     if (video) {
       final ok = await NetworkGuard.confirmIfNotWifi(
@@ -202,12 +202,12 @@ class _MainShellState extends State<MainShell> {
       ),
     );
   }
-
+ 
   Future<void> _openCreateGroupDialog() async {
     final nameCtrl = TextEditingController();
     final membersCtrl = TextEditingController(text: 'お母さん, お父さん');
     var category = '家族';
-
+ 
     try {
       final ok = await showDialog<bool>(
         context: context,
@@ -247,7 +247,7 @@ class _MainShellState extends State<MainShell> {
           ),
         ),
       );
-
+ 
       if (ok == true && nameCtrl.text.trim().isNotEmpty) {
         final members = membersCtrl.text
             .split(RegExp(r'[,、]'))
@@ -261,7 +261,7 @@ class _MainShellState extends State<MainShell> {
       membersCtrl.dispose();
     }
   }
-
+ 
   void _showErrorLogs() {
     showDialog<void>(
       context: context,
@@ -301,7 +301,7 @@ class _MainShellState extends State<MainShell> {
       ),
     );
   }
-
+ 
   @override
   Widget build(BuildContext context) {
     final pages = <Widget>[
@@ -309,7 +309,7 @@ class _MainShellState extends State<MainShell> {
       _buildCallTab(),
       SettingsTab(store: widget.store),
     ];
-
+ 
     return Scaffold(
       appBar: AppBar(
         title: const Text('つながる電話'),
@@ -349,7 +349,7 @@ class _MainShellState extends State<MainShell> {
       ),
     );
   }
-
+ 
   Widget _buildTalkTab() {
     final isWifi = NetworkGuard.isWifiOrEthernet(_connectivity);
     final isOff = NetworkGuard.isOffline(_connectivity);
@@ -358,7 +358,7 @@ class _MainShellState extends State<MainShell> {
         : widget.store.groups
             .where((g) => g.category == _selectedCategory)
             .toList();
-
+ 
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 88),
       children: <Widget>[
@@ -390,7 +390,7 @@ class _MainShellState extends State<MainShell> {
               ),
             ),
           ),
-
+ 
         Card(
           child: Padding(
             padding: const EdgeInsets.all(12),
@@ -452,7 +452,7 @@ class _MainShellState extends State<MainShell> {
           ),
         ),
         const SizedBox(height: 8),
-
+ 
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
@@ -471,7 +471,7 @@ class _MainShellState extends State<MainShell> {
           ),
         ),
         const SizedBox(height: 8),
-
+ 
         for (final group in filtered)
           Card(
             child: ListTile(
@@ -526,7 +526,7 @@ class _MainShellState extends State<MainShell> {
       ],
     );
   }
-
+ 
   Widget _buildCallTab() {
     return ListView(
       padding: const EdgeInsets.all(12),

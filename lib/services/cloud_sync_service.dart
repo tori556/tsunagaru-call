@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-
+ 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -9,25 +9,28 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-
+ 
 import '../models.dart';
 import 'core_services.dart';
-
+ 
+typedef QuerySnap = QuerySnapshot<JsonMap>;
+typedef QuerySub = StreamSubscription<QuerySnap>;
+ 
 final FlutterLocalNotificationsPlugin localNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
-
+ 
 String ringtoneChannelId(String ringtone) {
   final idx = ringtoneOptions.indexOf(ringtone);
   return 'tsunagaru_call_ch_${idx >= 0 ? idx : 0}';
 }
-
+ 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
     await Firebase.initializeApp();
   } catch (_) {}
-
+ 
   final data = message.data;
   if (data['type'] == 'incoming_call') {
     final payload = IncomingCallPayload.fromMap(data);
@@ -40,29 +43,26 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     }
   }
 }
-
-/// Step 6: Bidirectional Firebase Cloud Sync & Background Incoming Call Service
+ 
 class CloudSyncService {
   bool isReady = false;
   String? uid;
   String? fcmToken;
   String statusLabel = 'ローカルモード（google-services.json 未設定）';
-
+ 
   final Set<String> _handledCallIds = <String>{};
-  final Map<String, StreamSubscription<QuerySnapshot>>>
-      _msgSubs =
-      <String, StreamSubscription<QuerySnapshot>>>{};
-  StreamSubscription<QuerySnapshot>>? _groupSub;
-
+  final Map<String, QuerySub> _msgSubs = <String, QuerySub>{};
+  QuerySub? _groupSub;
+ 
   void Function(IncomingCallPayload payload)? onIncomingCall;
   void Function(String callId)? onCallCancelled;
-
+ 
   Future<void> init({
     required String inviteId,
     required String displayName,
   }) async {
     await _initLocalNotificationChannels();
-
+ 
     try {
       await Firebase.initializeApp();
       final auth = FirebaseAuth.instance;
@@ -70,22 +70,22 @@ class CloudSyncService {
         await auth.signInAnonymously();
       }
       uid = auth.currentUser?.uid;
-
+ 
       final fcm = FirebaseMessaging.instance;
       await fcm.requestPermission(alert: true, badge: true, sound: true);
       fcmToken = await fcm.getToken();
-
+ 
       FirebaseMessaging.onMessage.listen(_handleRemoteMessage);
       FirebaseMessaging.onMessageOpenedApp.listen(_handleRemoteMessage);
-
+ 
       final initialMsg = await fcm.getInitialMessage();
       if (initialMsg != null) {
         _handleRemoteMessage(initialMsg);
       }
-
+ 
       isReady = true;
       statusLabel = 'Firebase 双方向クラウド同期有効';
-
+ 
       await syncUserProfile(inviteId: inviteId, displayName: displayName);
     } catch (e, s) {
       isReady = false;
@@ -93,7 +93,7 @@ class CloudSyncService {
       ErrorGuard.record('Firebase初期化スキップ（ローカル継続）: $e', s);
     }
   }
-
+ 
   Future<void> _initLocalNotificationChannels() async {
     try {
       const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -102,7 +102,7 @@ class CloudSyncService {
         onDidReceiveNotificationResponse: (NotificationResponse res) {
           if (res.payload != null && res.payload!.isNotEmpty) {
             try {
-              final map = jsonDecode(res.payload!) as Map<String, dynamic>;
+              final map = jsonDecode(res.payload!) as JsonMap;
               final payload = IncomingCallPayload.fromMap(map);
               if (!payload.isStale) {
                 onIncomingCall?.call(payload);
@@ -111,14 +111,13 @@ class CloudSyncService {
           }
         },
       );
-
+ 
       final androidPlugin =
           localNotificationsPlugin.resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin>();
       if (androidPlugin != null) {
-        // Android 13+ runtime notification permission
         await androidPlugin.requestNotificationsPermission();
-
+ 
         for (var i = 0; i < ringtoneOptions.length; i++) {
           await androidPlugin.createNotificationChannel(
             AndroidNotificationChannel(
@@ -135,7 +134,7 @@ class CloudSyncService {
       ErrorGuard.record('通知チャンネル初期化エラー: $e', s);
     }
   }
-
+ 
   void _handleRemoteMessage(RemoteMessage message) {
     final data = message.data;
     final type = (data['type'] ?? '').toString();
@@ -153,7 +152,7 @@ class CloudSyncService {
       }
     }
   }
-
+ 
   static Future<void> showIncomingCallNotification(
     IncomingCallPayload payload,
   ) async {
@@ -181,7 +180,7 @@ class CloudSyncService {
       payload: jsonEncode(payload.toMap()),
     );
   }
-
+ 
   Future<void> syncUserProfile({
     required String inviteId,
     required String displayName,
@@ -207,7 +206,7 @@ class CloudSyncService {
         'online': true,
         'lastSeenAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
-
+ 
       await fs.collection('inviteIndex').doc(inviteId).set(<String, dynamic>{
         'inviteId': inviteId,
         'displayName': displayName,
@@ -218,8 +217,7 @@ class CloudSyncService {
       ErrorGuard.record('プロフィール同期エラー: $e', s);
     }
   }
-
-  /// Bidirectional group listener for groups that include this user's UID
+ 
   void listenMyGroups(void Function(List<ChatGroup> remoteGroups) onUpdate) {
     if (!isReady || uid == null) return;
     _groupSub?.cancel();
@@ -228,20 +226,19 @@ class CloudSyncService {
         .where('memberIds', arrayContains: uid)
         .snapshots()
         .listen(
-      (QuerySnapshot> snap) {
+      (QuerySnap snap) {
         final list = snap.docs.map((doc) {
-          final data = Map<String, dynamic>.from(doc.data())..['id'] = doc.id;
+          final data = JsonMap.from(doc.data())..['id'] = doc.id;
           return ChatGroup.fromJson(data);
         }).toList();
         onUpdate(list);
       },
-      onError: (Object e, StackTrace s) {
+      onError: (dynamic e, StackTrace s) {
         ErrorGuard.record('グループ購読エラー: $e', s);
       },
     );
   }
-
-  /// Bidirectional message listener for a specific group
+ 
   void listenGroupMessages(
     String groupId,
     void Function(List<ChatMessage> remoteMessages) onUpdate,
@@ -256,19 +253,19 @@ class CloudSyncService {
         .limitToLast(200)
         .snapshots()
         .listen(
-      (QuerySnapshot> snap) {
+      (QuerySnap snap) {
         final msgs = snap.docs.map((doc) {
-          final data = Map<String, dynamic>.from(doc.data())..['id'] = doc.id;
+          final data = JsonMap.from(doc.data())..['id'] = doc.id;
           return ChatMessage.fromJson(data);
         }).toList();
         onUpdate(msgs);
       },
-      onError: (Object e, StackTrace s) {
+      onError: (dynamic e, StackTrace s) {
         ErrorGuard.record('メッセージ購読エラー ($groupId): $e', s);
       },
     );
   }
-
+ 
   Future<void> syncGroupToCloud(ChatGroup group) async {
     if (!isReady || uid == null) return;
     try {
@@ -284,7 +281,7 @@ class CloudSyncService {
         'pinnedMessageId': group.pinnedMessageId,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
-
+ 
       await syncMemberSettingToCloud(
         group.id,
         muted: group.muted,
@@ -294,7 +291,7 @@ class CloudSyncService {
       ErrorGuard.record('グループ同期エラー: $e', s);
     }
   }
-
+ 
   Future<void> syncMemberSettingToCloud(
     String groupId, {
     required bool muted,
@@ -316,7 +313,7 @@ class CloudSyncService {
       ErrorGuard.record('トーク設定同期エラー: $e', s);
     }
   }
-
+ 
   Future<MemberProfile?> lookupInviteId(String inviteId) async {
     if (!isReady) return null;
     try {
@@ -336,8 +333,7 @@ class CloudSyncService {
       return null;
     }
   }
-
-  /// Stream-upload arbitrary file with real-time progress callback (no RAM bloat)
+ 
   Future<MediaAttachment?> uploadFileStream({
     required String groupId,
     required String messageId,
@@ -381,7 +377,7 @@ class CloudSyncService {
       return null;
     }
   }
-
+ 
   Future<void> pushMessageToCloud(String groupId, ChatMessage msg) async {
     if (!isReady || uid == null) return;
     try {
@@ -409,11 +405,11 @@ class CloudSyncService {
       ErrorGuard.record('メッセージクラウド同期エラー: $e', s);
     }
   }
-
+ 
   Future<void> updateMessageFieldsInCloud(
     String groupId,
     String messageId,
-    Map<String, dynamic> fields,
+    JsonMap fields,
   ) async {
     if (!isReady || uid == null) return;
     try {
@@ -427,7 +423,7 @@ class CloudSyncService {
       ErrorGuard.record('メッセージ差分同期エラー: $e', s);
     }
   }
-
+ 
   Future<void> createCallSignal({
     required String callId,
     required ChatGroup group,
@@ -455,7 +451,7 @@ class CloudSyncService {
       ErrorGuard.record('着信シグナル送信エラー: $e', s);
     }
   }
-
+ 
   Future<void> updateCallStatus(String callId, String status) async {
     if (!isReady) return;
     try {
@@ -467,7 +463,7 @@ class CloudSyncService {
       ErrorGuard.record('通話ステータス更新エラー: $e', s);
     }
   }
-
+ 
   void dispose() {
     _groupSub?.cancel();
     for (final sub in _msgSubs.values) {

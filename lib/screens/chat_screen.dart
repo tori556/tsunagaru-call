@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:io';
-
+ 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -9,32 +9,32 @@ import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import 'package:video_player/video_player.dart';
-
+ 
 import '../models.dart';
 import '../services/core_services.dart';
 import '../store/app_store.dart';
-
+ 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({
     super.key,
     required this.store,
     required this.groupId,
   });
-
+ 
   final AppStore store;
   final String groupId;
-
+ 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
 }
-
+ 
 class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _inputCtrl = TextEditingController();
   final TextEditingController _searchCtrl = TextEditingController();
   final AudioRecorder _recorder = AudioRecorder();
   final AudioPlayer _audioPlayer = AudioPlayer();
   StreamSubscription<PlayerState>? _playerSub;
-
+ 
   bool _searching = false;
   bool _silentMode = false;
   bool _isTyping = false;
@@ -43,9 +43,9 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _playingMessageId;
   int? _expireOverride;
   ChatMessage? _replyTarget;
-
+ 
   ChatGroup? get _group => widget.store.findGroup(widget.groupId);
-
+ 
   @override
   void initState() {
     super.initState();
@@ -59,7 +59,7 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     });
   }
-
+ 
   @override
   void dispose() {
     _playerSub?.cancel();
@@ -69,7 +69,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _audioPlayer.dispose();
     super.dispose();
   }
-
+ 
   Future<void> _sendNow({Duration? delay}) async {
     final text = _inputCtrl.text.trim();
     if (text.isEmpty) return;
@@ -96,7 +96,7 @@ class _ChatScreenState extends State<ChatScreen> {
       );
     }
   }
-
+ 
   Future<void> _toggleVoiceRecord() async {
     try {
       if (_recording) {
@@ -150,7 +150,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted) setState(() => _recording = false);
     }
   }
-
+ 
   Future<void> _playVoice(ChatMessage msg) async {
     try {
       if (_playingMessageId == msg.id) {
@@ -174,7 +174,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted) setState(() => _playingMessageId = null);
     }
   }
-
+ 
   void _openStampPicker() {
     showModalBottomSheet<void>(
       context: context,
@@ -195,7 +195,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 Navigator.of(bc).pop();
                 widget.store.sendMessage(
                   widget.groupId,
-                  text: '${st['emoji']} ${st['label']}',
+                  text: '${st.emoji} ${st.label}',
                   kind: 'stamp',
                   expireHoursOverride: _expireOverride,
                   silent: _silentMode,
@@ -205,9 +205,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: <Widget>[
-                    Text(st['emoji']!, style: const TextStyle(fontSize: 28)),
+                    Text(st.emoji, style: const TextStyle(fontSize: 28)),
                     Text(
-                      st['label']!,
+                      st.label,
                       style: const TextStyle(fontSize: 10),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -220,7 +220,7 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
   }
-
+ 
   void _openAttachmentSheet() {
     showModalBottomSheet<void>(
       context: context,
@@ -267,7 +267,7 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
   }
-
+ 
   Future<void> _pickAndSendPhoto({required bool viewOnce}) async {
     try {
       final picked = await ImagePicker().pickImage(
@@ -283,7 +283,7 @@ class _ChatScreenState extends State<ChatScreen> {
         fileSizeBytes: size,
       );
       if (!ok || !mounted) return;
-
+ 
       await widget.store.sendMessage(
         widget.groupId,
         text: viewOnce ? '👁 1回だけ表示の写真' : '🖼 写真',
@@ -301,7 +301,7 @@ class _ChatScreenState extends State<ChatScreen> {
       ErrorGuard.record('写真選択エラー: $e', s);
     }
   }
-
+ 
   Future<void> _pickAndSendShortVideo() async {
     try {
       final picked = await ImagePicker().pickVideo(
@@ -317,7 +317,7 @@ class _ChatScreenState extends State<ChatScreen> {
         fileSizeBytes: size,
       );
       if (!ok || !mounted) return;
-
+ 
       await widget.store.sendMessage(
         widget.groupId,
         text: '🎬 軽量動画メッセージ',
@@ -334,7 +334,7 @@ class _ChatScreenState extends State<ChatScreen> {
       ErrorGuard.record('動画選択エラー: $e', s);
     }
   }
-
+ 
   Future<void> _pickAndSendAnyFile() async {
     try {
       final res = await FilePicker.platform.pickFiles(
@@ -351,7 +351,7 @@ class _ChatScreenState extends State<ChatScreen> {
         fileSizeBytes: f.size,
       );
       if (!ok || !mounted) return;
-
+ 
       await widget.store.sendMessage(
         widget.groupId,
         text: '📎 ${f.name}',
@@ -368,7 +368,7 @@ class _ChatScreenState extends State<ChatScreen> {
       ErrorGuard.record('ファイル選択エラー: $e', s);
     }
   }
-
+ 
   Future<void> _openMediaFile(MediaAttachment media) async {
     if (media.localPath != null && File(media.localPath!).existsSync()) {
       await OpenFilex.open(media.localPath!);
@@ -376,7 +376,7 @@ class _ChatScreenState extends State<ChatScreen> {
       await ExternalAppLauncher.openUrl(context, media.remoteUrl!);
     }
   }
-
+ 
   Future<void> _openPhotoViewer(ChatMessage msg) async {
     final media = msg.media;
     if (media == null) return;
@@ -386,9 +386,9 @@ class _ChatScreenState extends State<ChatScreen> {
       );
       return;
     }
-
+ 
     var renderedFrame = false;
-
+ 
     await showDialog<void>(
       context: context,
       builder: (BuildContext dc) => Dialog.fullscreen(
@@ -437,26 +437,25 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
       ),
     );
-
-    // Consume view-once ONLY if the image actually rendered at least one frame
+ 
     if (msg.viewOncePhoto && renderedFrame) {
       await widget.store.markViewOncePhotoViewed(widget.groupId, msg.id);
     }
   }
-
+ 
   Future<void> _openVideoViewer(MediaAttachment media) async {
     await showDialog<void>(
       context: context,
       builder: (_) => _VideoPlayerDialog(media: media),
     );
   }
-
+ 
   Future<void> _openPollDialog() async {
     final qCtrl = TextEditingController();
     final o1 = TextEditingController(text: '賛成');
     final o2 = TextEditingController(text: '別日にしたい');
     final o3 = TextEditingController();
-
+ 
     try {
       final ok = await showDialog<bool>(
         context: context,
@@ -479,7 +478,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ],
         ),
       );
-
+ 
       if (ok == true && qCtrl.text.trim().isNotEmpty) {
         final opts = <String>[o1.text.trim(), o2.text.trim(), o3.text.trim()]
             .where((e) => e.isNotEmpty)
@@ -505,7 +504,7 @@ class _ChatScreenState extends State<ChatScreen> {
       o3.dispose();
     }
   }
-
+ 
   Future<void> _openSchedulePicker() async {
     if (_inputCtrl.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -532,7 +531,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
     if (mins != null) await _sendNow(delay: Duration(minutes: mins));
   }
-
+ 
   void _openMentionPicker(ChatGroup group) {
     showModalBottomSheet<void>(
       context: context,
@@ -559,7 +558,7 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
   }
-
+ 
   void _openTalkSettings(ChatGroup group) {
     showModalBottomSheet<void>(
       context: context,
@@ -601,7 +600,7 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
   }
-
+ 
   void _openMessageActions(ChatGroup group, ChatMessage msg) {
     showModalBottomSheet<void>(
       context: context,
@@ -677,7 +676,7 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
   }
-
+ 
   Future<void> _openEditDialog(ChatGroup group, ChatMessage msg) async {
     final ctrl = TextEditingController(text: msg.text);
     try {
@@ -699,7 +698,7 @@ class _ChatScreenState extends State<ChatScreen> {
       ctrl.dispose();
     }
   }
-
+ 
   void _openForwardDialog(ChatGroup source, ChatMessage msg) {
     final others = widget.store.groups.where((g) => g.id != source.id).toList();
     if (others.isEmpty) return;
@@ -730,14 +729,14 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
   }
-
+ 
   String _remainingText(DateTime expiresAt) {
     final diff = expiresAt.difference(DateTime.now());
     if (diff.isNegative) return 'まもなく消去';
     if (diff.inHours >= 1) return '残り${diff.inHours}時間${diff.inMinutes % 60}分';
     return '残り${diff.inMinutes + 1}分';
   }
-
+ 
   Widget _buildMessageBody(ChatMessage m) {
     if (m.deletedForAll) {
       return Text(m.text, style: const TextStyle(fontStyle: FontStyle.italic));
@@ -820,7 +819,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     return Text(m.text);
   }
-
+ 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -830,7 +829,7 @@ class _ChatScreenState extends State<ChatScreen> {
         if (group == null) {
           return const Scaffold(body: Center(child: Text('トークが見つかりません')));
         }
-
+ 
         final query = _searchCtrl.text.trim().toLowerCase();
         final visibleMessages = query.isEmpty
             ? group.messages
@@ -840,7 +839,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     m.sender.toLowerCase().contains(query) ||
                     (m.media?.fileName.toLowerCase().contains(query) ?? false))
                 .toList();
-
+ 
         ChatMessage? pinned;
         if (group.pinnedMessageId != null) {
           for (final m in group.messages) {
@@ -850,7 +849,7 @@ class _ChatScreenState extends State<ChatScreen> {
             }
           }
         }
-
+ 
         final statusLine = _isTyping && widget.store.shareTypingStatus
             ? '入力中...'
             : widget.store.showOnlineStatus
@@ -858,9 +857,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 : widget.store.showLastSeen
                     ? '最終接続: たった今'
                     : '${group.members.length}人';
-
+ 
         final activeExpire = _expireOverride ?? widget.store.defaultExpireHours;
-
+ 
         return Scaffold(
           appBar: AppBar(
             title: _searching
@@ -1184,24 +1183,24 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 }
-
+ 
 class _VideoPlayerDialog extends StatefulWidget {
   const _VideoPlayerDialog({required this.media});
   final MediaAttachment media;
-
+ 
   @override
   State<_VideoPlayerDialog> createState() => _VideoPlayerDialogState();
 }
-
+ 
 class _VideoPlayerDialogState extends State<_VideoPlayerDialog> {
   VideoPlayerController? _controller;
-
+ 
   @override
   void initState() {
     super.initState();
     _init();
   }
-
+ 
   Future<void> _init() async {
     try {
       if (widget.media.localPath != null &&
@@ -1219,13 +1218,13 @@ class _VideoPlayerDialogState extends State<_VideoPlayerDialog> {
       ErrorGuard.record('動画再生エラー: $e', s);
     }
   }
-
+ 
   @override
   void dispose() {
     _controller?.dispose();
     super.dispose();
   }
-
+ 
   @override
   Widget build(BuildContext context) {
     final c = _controller;

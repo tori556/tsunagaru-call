@@ -1,3 +1,5 @@
+typedef JsonMap = Map<String, dynamic>;
+ 
 const String appBuildNumberStr = String.fromEnvironment(
   'APP_BUILD_NUMBER',
   defaultValue: '1',
@@ -6,7 +8,7 @@ const String githubRepo = String.fromEnvironment(
   'GITHUB_REPO',
   defaultValue: '',
 );
-
+ 
 const List<String> ringtoneOptions = <String>[
   '標準チャイム',
   '家族ベル',
@@ -14,30 +16,35 @@ const List<String> ringtoneOptions = <String>[
   '親戚メロディ',
   '仕事用トーン',
 ];
-
+ 
 const List<int> expireChoices = <int>[0, 1, 3, 12, 24];
 const List<String> reactionEmojis = <String>['👍', '❤️', '😂', '🙏', '👀'];
-
-const List> stampCatalog = >[
-  <String, String>{'emoji': '👌', 'label': 'りょうかい！'},
-  <String, String>{'emoji': '🙏', 'label': 'ありがとう！'},
-  <String, String>{'emoji': '🏠', 'label': 'いま帰るよ'},
-  <String, String>{'emoji': '📞', 'label': 'あとで電話するね'},
-  <String, String>{'emoji': '🍱', 'label': 'ごはんできたよ'},
-  <String, String>{'emoji': '🚗', 'label': 'もうすぐ着くよ'},
-  <String, String>{'emoji': '☀️', 'label': 'おはよう！'},
-  <String, String>{'emoji': '🌙', 'label': 'おやすみ'},
+ 
+class StampItem {
+  const StampItem(this.emoji, this.label);
+  final String emoji;
+  final String label;
+}
+ 
+const List<StampItem> stampCatalog = <StampItem>[
+  StampItem('👌', 'りょうかい！'),
+  StampItem('🙏', 'ありがとう！'),
+  StampItem('🏠', 'いま帰るよ'),
+  StampItem('📞', 'あとで電話するね'),
+  StampItem('🍱', 'ごはんできたよ'),
+  StampItem('🚗', 'もうすぐ着くよ'),
+  StampItem('☀️', 'おはよう！'),
+  StampItem('🌙', 'おやすみ'),
 ];
-
-/// Safely extracts the first Unicode code point (prevents crashes on empty/emoji strings).
+ 
 String initialLetter(String text) {
   final trimmed = text.trim();
   if (trimmed.isEmpty) return '?';
   return String.fromCharCode(trimmed.runes.first);
 }
-
+ 
 String formatExpireLabel(int hours) => hours <= 0 ? '消えない' : '$hours時間';
-
+ 
 String formatBytes(int? bytes) {
   if (bytes == null || bytes <= 0) return '';
   if (bytes < 1024) return '${bytes}B';
@@ -47,7 +54,7 @@ String formatBytes(int? bytes) {
   }
   return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)}GB';
 }
-
+ 
 DateTime? parseFlexibleDateTime(dynamic value) {
   if (value == null) return null;
   if (value is DateTime) return value;
@@ -59,7 +66,7 @@ DateTime? parseFlexibleDateTime(dynamic value) {
   } catch (_) {}
   return null;
 }
-
+ 
 class UpdateInfo {
   const UpdateInfo({
     required this.buildNumber,
@@ -67,56 +74,56 @@ class UpdateInfo {
     required this.notes,
     required this.apkUrl,
   });
-
+ 
   final int buildNumber;
   final String versionName;
   final String notes;
   final String apkUrl;
 }
-
+ 
 class MemberProfile {
   const MemberProfile({
     required this.inviteId,
     required this.name,
     this.uid,
   });
-
+ 
   final String inviteId;
   final String name;
   final String? uid;
-
-  Map<String, dynamic> toJson() => <String, dynamic>{
+ 
+  JsonMap toJson() => <String, dynamic>{
         'inviteId': inviteId,
         'name': name,
         'uid': uid,
       };
-
-  factory MemberProfile.fromJson(Map<String, dynamic> json) => MemberProfile(
+ 
+  factory MemberProfile.fromJson(JsonMap json) => MemberProfile(
         inviteId: (json['inviteId'] as String?) ?? '',
         name: (json['name'] as String?) ?? 'メンバー',
         uid: json['uid'] as String?,
       );
 }
-
+ 
 class PollData {
   PollData({
     required this.question,
     required this.options,
     required this.votes,
   });
-
+ 
   final String question;
   final List<String> options;
   final Map<String, List<String>> votes;
-
-  Map<String, dynamic> toJson() => <String, dynamic>{
+ 
+  JsonMap toJson() => <String, dynamic>{
         'question': question,
         'options': options,
         'votes': votes,
       };
-
-  factory PollData.fromJson(Map<String, dynamic> json) {
-    final raw = (json['votes'] as Map<String, dynamic>?) ?? <String, dynamic>{};
+ 
+  factory PollData.fromJson(JsonMap json) {
+    final raw = (json['votes'] as JsonMap?) ?? <String, dynamic>{};
     final parsed = <String, List<String>>{};
     raw.forEach((String k, dynamic v) {
       parsed[k] = ((v as List<dynamic>?) ?? const <dynamic>[])
@@ -132,7 +139,7 @@ class PollData {
     );
   }
 }
-
+ 
 class MediaAttachment {
   const MediaAttachment({
     required this.fileName,
@@ -143,7 +150,7 @@ class MediaAttachment {
     this.durationSec,
     this.isTemporaryCache = false,
   });
-
+ 
   final String fileName;
   final String? localPath;
   final String? remoteUrl;
@@ -151,8 +158,8 @@ class MediaAttachment {
   final int? fileSizeBytes;
   final int? durationSec;
   final bool isTemporaryCache;
-
-  Map<String, dynamic> toJson() => <String, dynamic>{
+ 
+  JsonMap toJson() => <String, dynamic>{
         'fileName': fileName,
         'localPath': localPath,
         'remoteUrl': remoteUrl,
@@ -161,9 +168,8 @@ class MediaAttachment {
         'durationSec': durationSec,
         'isTemporaryCache': isTemporaryCache,
       };
-
-  factory MediaAttachment.fromJson(Map<String, dynamic> json) =>
-      MediaAttachment(
+ 
+  factory MediaAttachment.fromJson(JsonMap json) => MediaAttachment(
         fileName: (json['fileName'] as String?) ?? 'file',
         localPath: json['localPath'] as String?,
         remoteUrl: json['remoteUrl'] as String?,
@@ -173,7 +179,7 @@ class MediaAttachment {
         isTemporaryCache: (json['isTemporaryCache'] as bool?) ?? false,
       );
 }
-
+ 
 class ChatMessage {
   ChatMessage({
     required this.id,
@@ -199,13 +205,13 @@ class ChatMessage {
   })  : viewedOnceBy = viewedOnceBy ?? <String>[],
         readBy = readBy ?? <String>[],
         reactions = reactions ?? <String, List<String>>{};
-
+ 
   final String id;
   final String sender;
   final String? senderId;
   String text;
   final DateTime createdAt;
-  final String kind; // text | stamp | voice | video | photo | file
+  final String kind;
   bool edited;
   bool deletedForAll;
   final bool silent;
@@ -220,12 +226,12 @@ class ChatMessage {
   final List<String> readBy;
   final Map<String, List<String>> reactions;
   final PollData? poll;
-
+ 
   bool isExpired(DateTime now) => expiresAt != null && now.isAfter(expiresAt!);
-
+ 
   bool isViewedOnceBy(String viewerKey) => viewedOnceBy.contains(viewerKey);
-
-  Map<String, dynamic> toJson() => <String, dynamic>{
+ 
+  JsonMap toJson() => <String, dynamic>{
         'id': id,
         'sender': sender,
         'senderId': senderId,
@@ -247,26 +253,24 @@ class ChatMessage {
         'reactions': reactions,
         'poll': poll?.toJson(),
       };
-
-  factory ChatMessage.fromJson(Map<String, dynamic> json) {
-    final rawReacts =
-        (json['reactions'] as Map<String, dynamic>?) ?? <String, dynamic>{};
+ 
+  factory ChatMessage.fromJson(JsonMap json) {
+    final rawReacts = (json['reactions'] as JsonMap?) ?? <String, dynamic>{};
     final parsedReacts = <String, List<String>>{};
     rawReacts.forEach((String k, dynamic v) {
       parsedReacts[k] = ((v as List<dynamic>?) ?? const <dynamic>[])
           .map((dynamic e) => e.toString())
           .toList();
     });
-
+ 
     final viewedList =
         ((json['viewedOnceBy'] as List<dynamic>?) ?? const <dynamic>[])
             .map((dynamic e) => e.toString())
             .toList();
-    // Legacy compatibility
     if (viewedList.isEmpty && (json['viewedOnce'] as bool?) == true) {
       viewedList.add('legacy_viewed');
     }
-
+ 
     return ChatMessage(
       id: (json['id'] as String?) ??
           DateTime.now().microsecondsSinceEpoch.toString(),
@@ -285,7 +289,7 @@ class ChatMessage {
       replyPreview: json['replyPreview'] as String?,
       media: json['media'] != null
           ? MediaAttachment.fromJson(
-              Map<String, dynamic>.from(json['media'] as Map),
+              JsonMap.from(json['media'] as Map),
             )
           : null,
       viewOncePhoto: (json['viewOncePhoto'] as bool?) ?? false,
@@ -297,12 +301,12 @@ class ChatMessage {
           .toList(),
       reactions: parsedReacts,
       poll: json['poll'] != null
-          ? PollData.fromJson(Map<String, dynamic>.from(json['poll'] as Map))
+          ? PollData.fromJson(JsonMap.from(json['poll'] as Map))
           : null,
     );
   }
 }
-
+ 
 class ChatGroup {
   ChatGroup({
     required this.id,
@@ -319,7 +323,7 @@ class ChatGroup {
   })  : memberUids = memberUids ?? <String>[],
         messages = messages ?? <ChatMessage>[],
         scheduledMessages = scheduledMessages ?? <ChatMessage>[];
-
+ 
   final String id;
   final String name;
   final String category;
@@ -331,8 +335,8 @@ class ChatGroup {
   String draft;
   final List<ChatMessage> messages;
   final List<ChatMessage> scheduledMessages;
-
-  Map<String, dynamic> toJson() => <String, dynamic>{
+ 
+  JsonMap toJson() => <String, dynamic>{
         'id': id,
         'name': name,
         'category': category,
@@ -345,36 +349,35 @@ class ChatGroup {
         'messages': messages.map((m) => m.toJson()).toList(),
         'scheduledMessages': scheduledMessages.map((m) => m.toJson()).toList(),
       };
-
-  factory ChatGroup.fromJson(Map<String, dynamic> json) => ChatGroup(
+ 
+  factory ChatGroup.fromJson(JsonMap json) => ChatGroup(
         id: (json['id'] as String?) ?? 'group',
         name: (json['name'] as String?) ?? 'グループ',
         category: (json['category'] as String?) ?? '家族',
         members: ((json['members'] as List<dynamic>?) ?? const <dynamic>[])
             .map((dynamic e) => e.toString())
             .toList(),
-        memberUids:
-            ((json['memberUids'] as List<dynamic>?) ??
-                    (json['memberIds'] as List<dynamic>?) ??
-                    const <dynamic>[])
-                .map((dynamic e) => e.toString())
-                .toList(),
+        memberUids: ((json['memberUids'] as List<dynamic>?) ??
+                (json['memberIds'] as List<dynamic>?) ??
+                const <dynamic>[])
+            .map((dynamic e) => e.toString())
+            .toList(),
         muted: (json['muted'] as bool?) ?? false,
         ringtone: (json['ringtone'] as String?) ?? '標準チャイム',
         pinnedMessageId: json['pinnedMessageId'] as String?,
         draft: (json['draft'] as String?) ?? '',
         messages: ((json['messages'] as List<dynamic>?) ?? const <dynamic>[])
             .map((dynamic e) =>
-                ChatMessage.fromJson(Map<String, dynamic>.from(e as Map)))
+                ChatMessage.fromJson(JsonMap.from(e as Map)))
             .toList(),
         scheduledMessages: ((json['scheduledMessages'] as List<dynamic>?) ??
                 const <dynamic>[])
             .map((dynamic e) =>
-                ChatMessage.fromJson(Map<String, dynamic>.from(e as Map)))
+                ChatMessage.fromJson(JsonMap.from(e as Map)))
             .toList(),
       );
 }
-
+ 
 class IncomingCallPayload {
   const IncomingCallPayload({
     required this.callId,
@@ -386,7 +389,7 @@ class IncomingCallPayload {
     required this.sentAtEpochMs,
     this.roomName,
   });
-
+ 
   final String callId;
   final String groupId;
   final String groupName;
@@ -395,11 +398,11 @@ class IncomingCallPayload {
   final String ringtone;
   final int sentAtEpochMs;
   final String? roomName;
-
+ 
   bool get isStale =>
       DateTime.now().millisecondsSinceEpoch - sentAtEpochMs > 45000;
-
-  Map<String, dynamic> toMap() => <String, dynamic>{
+ 
+  JsonMap toMap() => <String, dynamic>{
         'callId': callId,
         'groupId': groupId,
         'groupName': groupName,
@@ -409,9 +412,8 @@ class IncomingCallPayload {
         'sentAtEpochMs': sentAtEpochMs.toString(),
         'roomName': roomName ?? '',
       };
-
-  factory IncomingCallPayload.fromMap(Map<String, dynamic> map) =>
-      IncomingCallPayload(
+ 
+  factory IncomingCallPayload.fromMap(JsonMap map) => IncomingCallPayload(
         callId: (map['callId'] ?? '').toString(),
         groupId: (map['groupId'] ?? 'family').toString(),
         groupName: (map['groupName'] ?? '家族ルーム').toString(),

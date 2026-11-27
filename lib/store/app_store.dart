@@ -2,62 +2,55 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
-
+ 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
+ 
 import '../models.dart';
 import '../services/cloud_sync_service.dart';
 import '../services/core_services.dart';
-
+ 
 class AppStore extends ChangeNotifier {
   static const String _storageKey = 'tsunagaru_full_step1_6_v2';
-
+ 
   final CloudSyncService cloud = CloudSyncService();
-
+ 
   String myName = '自分';
   String myInviteId = '';
   bool warnOnNonWifi = true;
-  int defaultExpireHours = 0; // 0 = 消えない, 1, 3, 12, 24
+  int defaultExpireHours = 0;
   bool showOnlineStatus = true;
   bool showLastSeen = true;
   bool shareTypingStatus = true;
   bool noiseCancellationEnabled = true;
   String liveKitUrl = '';
   String liveKitToken = '';
-
-  // Step 5: Security Lock
+ 
   bool lockEnabled = false;
   bool useBiometrics = true;
   int lockGraceSeconds = 30;
   bool isUnlocked = true;
   DateTime? lastBackgroundedAt;
-
-  // Step 5: Contacts added via QR / ID
+ 
   List<MemberProfile> contacts = <MemberProfile>[];
-
-  // Step 2-4: Groups & Messages
   List<ChatGroup> groups = <ChatGroup>[];
   UpdateInfo? pendingUpdate;
-
-  // Upload progress indicator (null when idle)
+ 
   double? uploadProgress;
   String? uploadingFileName;
-
-  // Step 6: Active incoming call overlay
   IncomingCallPayload? activeIncomingCall;
-
+ 
   Timer? _housekeepingTimer;
   Timer? _saveDebounceTimer;
-
+ 
   String get myViewerKey => cloud.uid ?? myInviteId;
-
+ 
   Future<void> init() async {
     await _load();
     if (lockEnabled) {
       isUnlocked = false;
     }
-
+ 
     cloud.onIncomingCall = (IncomingCallPayload payload) {
       activeIncomingCall = payload;
       notifyListeners();
@@ -68,13 +61,13 @@ class AppStore extends ChangeNotifier {
         notifyListeners();
       }
     };
-
+ 
     await cloud.init(inviteId: myInviteId, displayName: myName);
     if (cloud.isReady) {
       _startCloudListeners();
     }
     notifyListeners();
-
+ 
     _housekeepingTimer?.cancel();
     _housekeepingTimer = Timer.periodic(
       const Duration(seconds: 10),
@@ -82,7 +75,7 @@ class AppStore extends ChangeNotifier {
     );
     _checkUpdatesSilently();
   }
-
+ 
   void _startCloudListeners() {
     for (final g in groups) {
       if (cloud.uid != null && !g.memberUids.contains(cloud.uid)) {
@@ -92,7 +85,7 @@ class AppStore extends ChangeNotifier {
         _mergeRemoteMessages(g.id, remoteMsgs);
       });
     }
-
+ 
     cloud.listenMyGroups((List<ChatGroup> remoteGroups) {
       var changed = false;
       for (final rg in remoteGroups) {
@@ -125,7 +118,7 @@ class AppStore extends ChangeNotifier {
       if (changed) save();
     });
   }
-
+ 
   void _mergeRemoteMessages(String groupId, List<ChatMessage> remoteMsgs) {
     final g = findGroup(groupId);
     if (g == null) return;
@@ -134,7 +127,6 @@ class AppStore extends ChangeNotifier {
     for (final rm in remoteMsgs) {
       if (rm.isExpired(now)) continue;
       final existing = byId[rm.id];
-      // Preserve local file path if already cached locally
       if (existing?.media?.localPath != null &&
           rm.media != null &&
           rm.media!.localPath == null) {
@@ -157,7 +149,7 @@ class AppStore extends ChangeNotifier {
       ..addAll(merged);
     save();
   }
-
+ 
   String _generateInviteId() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     final r = Random.secure();
@@ -165,7 +157,7 @@ class AppStore extends ChangeNotifier {
         List<String>.generate(n, (_) => chars[r.nextInt(chars.length)]).join();
     return 'TSU-${part(4)}-${part(2)}';
   }
-
+ 
   Future<void> _checkUpdatesSilently() async {
     try {
       final info = await UpdateChecker.checkLatest();
@@ -177,13 +169,13 @@ class AppStore extends ChangeNotifier {
       ErrorGuard.record('更新確認スキップ: $e', s);
     }
   }
-
+ 
   Future<void> _load() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(_storageKey);
       if (raw != null && raw.isNotEmpty) {
-        final d = jsonDecode(raw) as Map<String, dynamic>;
+        final d = jsonDecode(raw) as JsonMap;
         myName = (d['myName'] as String?) ?? '自分';
         myInviteId = (d['myInviteId'] as String?) ?? '';
         warnOnNonWifi = (d['warnOnNonWifi'] as bool?) ?? true;
@@ -199,18 +191,16 @@ class AppStore extends ChangeNotifier {
         useBiometrics = (d['useBiometrics'] as bool?) ?? true;
         lockGraceSeconds = (d['lockGraceSeconds'] as int?) ?? 30;
         contacts = ((d['contacts'] as List<dynamic>?) ?? const <dynamic>[])
-            .map((dynamic e) =>
-                MemberProfile.fromJson(Map<String, dynamic>.from(e as Map)))
+            .map((dynamic e) => MemberProfile.fromJson(JsonMap.from(e as Map)))
             .toList();
         groups = ((d['groups'] as List<dynamic>?) ?? const <dynamic>[])
-            .map((dynamic e) =>
-                ChatGroup.fromJson(Map<String, dynamic>.from(e as Map)))
+            .map((dynamic e) => ChatGroup.fromJson(JsonMap.from(e as Map)))
             .toList();
       }
     } catch (e, s) {
       ErrorGuard.record('データ復元エラー: $e', s);
     }
-
+ 
     if (myInviteId.isEmpty) {
       myInviteId = _generateInviteId();
     }
@@ -220,7 +210,7 @@ class AppStore extends ChangeNotifier {
     _runHousekeeping(notify: false);
     notifyListeners();
   }
-
+ 
   List<ChatGroup> _defaultGroups() {
     final now = DateTime.now();
     return <ChatGroup>[
@@ -257,8 +247,7 @@ class AppStore extends ChangeNotifier {
       ),
     ];
   }
-
-  /// Debounced local save to prevent UI jank and excessive writes
+ 
   void save({bool syncProfile = false}) {
     notifyListeners();
     _saveDebounceTimer?.cancel();
@@ -266,8 +255,7 @@ class AppStore extends ChangeNotifier {
       _persistNow(syncProfile: syncProfile);
     });
   }
-
-  /// Draft-only update: avoids full UI rebuilds and never triggers cloud profile sync
+ 
   void updateDraft(String groupId, String draftText) {
     final g = findGroup(groupId);
     if (g == null) return;
@@ -277,13 +265,13 @@ class AppStore extends ChangeNotifier {
       _persistNow(syncProfile: false);
     });
   }
-
+ 
   Future<void> saveImmediate({bool syncProfile = false}) async {
     _saveDebounceTimer?.cancel();
     notifyListeners();
     await _persistNow(syncProfile: syncProfile);
   }
-
+ 
   Future<void> _persistNow({required bool syncProfile}) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -323,12 +311,12 @@ class AppStore extends ChangeNotifier {
       ErrorGuard.record('データ保存エラーを吸収: $e', s);
     }
   }
-
+ 
   void handleAppPaused() {
     lastBackgroundedAt = DateTime.now();
     unawaited(_persistNow(syncProfile: false));
   }
-
+ 
   void handleAppResumed() {
     if (!lockEnabled || lastBackgroundedAt == null) return;
     final elapsed = DateTime.now().difference(lastBackgroundedAt!).inSeconds;
@@ -337,23 +325,23 @@ class AppStore extends ChangeNotifier {
       notifyListeners();
     }
   }
-
+ 
   void unlockApp() {
     isUnlocked = true;
     notifyListeners();
   }
-
+ 
   Future<void> resetLockEmergency() async {
     await AuthLockService.clearPin();
     lockEnabled = false;
     isUnlocked = true;
     await saveImmediate();
   }
-
+ 
   void _runHousekeeping({bool notify = true}) {
     final now = DateTime.now();
     var changed = false;
-
+ 
     for (final g in groups) {
       final before = g.messages.length;
       g.messages.removeWhere((m) => m.isExpired(now));
@@ -364,9 +352,7 @@ class AppStore extends ChangeNotifier {
           g.pinnedMessageId = null;
         }
       }
-
-      // Only dispatch scheduled messages locally when offline/local-only mode
-      // (When Firebase is active, Cloud Functions handles scheduled dispatch cleanly without duplicates)
+ 
       if (!cloud.isReady) {
         final due = g.scheduledMessages
             .where((m) => m.scheduledFor != null && !now.isBefore(m.scheduledFor!))
@@ -394,17 +380,17 @@ class AppStore extends ChangeNotifier {
         }
       }
     }
-
+ 
     if (changed && notify) save();
   }
-
+ 
   ChatGroup? findGroup(String id) {
     for (final g in groups) {
       if (g.id == id) return g;
     }
     return null;
   }
-
+ 
   Future<void> addGroup(String name, String category, List<String> members) async {
     final clean = <String>{myName, ...members}.toList();
     final group = ChatGroup(
@@ -423,7 +409,7 @@ class AppStore extends ChangeNotifier {
       });
     }
   }
-
+ 
   Future<MemberProfile> addContactByIdOrQr({
     required String inviteId,
     String? fallbackName,
@@ -438,10 +424,10 @@ class AppStore extends ChangeNotifier {
               ? fallbackName.trim()
               : '友だち($normalized)',
         );
-
+ 
     contacts.removeWhere((c) => c.inviteId == profile.inviteId);
     contacts.add(profile);
-
+ 
     if (targetGroupId != null) {
       final g = findGroup(targetGroupId);
       if (g != null) {
@@ -457,7 +443,7 @@ class AppStore extends ChangeNotifier {
     await saveImmediate();
     return profile;
   }
-
+ 
   Future<void> sendMessage(
     String groupId, {
     required String text,
@@ -479,7 +465,7 @@ class AppStore extends ChangeNotifier {
     final sendAt = scheduleDelay != null ? now.add(scheduleDelay) : now;
     final expiresAt = hours > 0 ? sendAt.add(Duration(hours: hours)) : null;
     final msgId = 'm_${now.microsecondsSinceEpoch}';
-
+ 
     MediaAttachment? finalMedia = media;
     if (media != null && media.localPath != null && cloud.isReady) {
       uploadingFileName = media.fileName;
@@ -505,7 +491,7 @@ class AppStore extends ChangeNotifier {
         notifyListeners();
       }
     }
-
+ 
     final msg = ChatMessage(
       id: msgId,
       sender: myName,
@@ -524,7 +510,7 @@ class AppStore extends ChangeNotifier {
       readBy: <String>[myName],
       poll: poll,
     );
-
+ 
     if (scheduleDelay != null) {
       g.scheduledMessages.add(msg);
     } else {
@@ -537,7 +523,7 @@ class AppStore extends ChangeNotifier {
       unawaited(cloud.pushMessageToCloud(groupId, msg));
     }
   }
-
+ 
   Future<void> markViewOncePhotoViewed(String groupId, String messageId) async {
     final g = findGroup(groupId);
     if (g == null) return;
@@ -546,7 +532,6 @@ class AppStore extends ChangeNotifier {
         if (!m.viewedOnceBy.contains(myViewerKey)) {
           m.viewedOnceBy.add(myViewerKey);
         }
-        // Delete temporary cached copy on device if applicable
         if (m.media?.isTemporaryCache == true && m.media?.localPath != null) {
           try {
             final f = File(m.media!.localPath!);
@@ -563,7 +548,7 @@ class AppStore extends ChangeNotifier {
       }
     }
   }
-
+ 
   void markAllRead(String groupId) {
     final g = findGroup(groupId);
     if (g == null) return;
@@ -581,7 +566,7 @@ class AppStore extends ChangeNotifier {
     }
     if (changed) save();
   }
-
+ 
   void editMessage(String groupId, ChatMessage msg, String newText) {
     msg.text = newText;
     msg.edited = true;
@@ -593,7 +578,7 @@ class AppStore extends ChangeNotifier {
       }),
     );
   }
-
+ 
   void deleteMessageForAll(String groupId, ChatMessage msg) {
     msg.deletedForAll = true;
     msg.text = 'このメッセージは送信取り消しされました';
@@ -607,13 +592,13 @@ class AppStore extends ChangeNotifier {
       }),
     );
   }
-
+ 
   void togglePin(ChatGroup group, String? messageId) {
     group.pinnedMessageId = messageId;
     save();
     unawaited(cloud.syncGroupToCloud(group));
   }
-
+ 
   void updateTalkSettings(ChatGroup group, {bool? muted, String? ringtone}) {
     if (muted != null) group.muted = muted;
     if (ringtone != null) group.ringtone = ringtone;
@@ -626,7 +611,7 @@ class AppStore extends ChangeNotifier {
       ),
     );
   }
-
+ 
   void toggleReaction(String groupId, String messageId, String emoji) {
     final g = findGroup(groupId);
     if (g == null) return;
@@ -649,7 +634,7 @@ class AppStore extends ChangeNotifier {
       }
     }
   }
-
+ 
   void votePoll(String groupId, String messageId, int optionIndex) {
     final g = findGroup(groupId);
     if (g == null) return;
@@ -668,7 +653,7 @@ class AppStore extends ChangeNotifier {
       }
     }
   }
-
+ 
   void triggerTestIncomingCall() {
     final group = groups.isNotEmpty ? groups.first : _defaultGroups().first;
     final payload = IncomingCallPayload(
@@ -684,7 +669,7 @@ class AppStore extends ChangeNotifier {
     unawaited(CloudSyncService.showIncomingCallNotification(payload));
     notifyListeners();
   }
-
+ 
   void clearIncomingCall({required String status}) {
     final call = activeIncomingCall;
     activeIncomingCall = null;
@@ -694,7 +679,7 @@ class AppStore extends ChangeNotifier {
     }
     notifyListeners();
   }
-
+ 
   @override
   void dispose() {
     _housekeepingTimer?.cancel();

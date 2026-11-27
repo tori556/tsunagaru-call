@@ -1,30 +1,30 @@
 import 'dart:async';
 import 'dart:convert';
-
+ 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-
+ 
 import '../models.dart';
 import '../services/core_services.dart';
 import '../store/app_store.dart';
-
+ 
 class LockOverlayScreen extends StatefulWidget {
   const LockOverlayScreen({super.key, required this.store});
   final AppStore store;
-
+ 
   @override
   State<LockOverlayScreen> createState() => _LockOverlayScreenState();
 }
-
+ 
 class _LockOverlayScreenState extends State<LockOverlayScreen> {
   final TextEditingController _pinCtrl = TextEditingController();
   int _failCount = 0;
   int _cooldownSec = 0;
   Timer? _cooldownTimer;
   String? _errorMsg;
-
+ 
   @override
   void initState() {
     super.initState();
@@ -32,7 +32,7 @@ class _LockOverlayScreenState extends State<LockOverlayScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) => _tryBiometric());
     }
   }
-
+ 
   Future<void> _tryBiometric() async {
     if (_cooldownSec > 0) return;
     final ok = await AuthLockService.authenticateBiometric();
@@ -40,7 +40,7 @@ class _LockOverlayScreenState extends State<LockOverlayScreen> {
       widget.store.unlockApp();
     }
   }
-
+ 
   Future<void> _verifyPin() async {
     if (_cooldownSec > 0) return;
     final ok = await AuthLockService.verifyPin(_pinCtrl.text.trim());
@@ -59,7 +59,7 @@ class _LockOverlayScreenState extends State<LockOverlayScreen> {
       }
     }
   }
-
+ 
   Future<void> _confirmForgotPin() async {
     final ok = await showDialog<bool>(
       context: context,
@@ -82,8 +82,7 @@ class _LockOverlayScreenState extends State<LockOverlayScreen> {
       ),
     );
     if (ok != true || !mounted) return;
-
-    // Require device biometric verification if hardware supports it
+ 
     if (await AuthLockService.canUseBiometrics()) {
       final bioOk = await AuthLockService.authenticateBiometric();
       if (!bioOk) {
@@ -95,7 +94,7 @@ class _LockOverlayScreenState extends State<LockOverlayScreen> {
     }
     await widget.store.resetLockEmergency();
   }
-
+ 
   void _startCooldown(int seconds) {
     _cooldownTimer?.cancel();
     setState(() {
@@ -121,14 +120,14 @@ class _LockOverlayScreenState extends State<LockOverlayScreen> {
       }
     });
   }
-
+ 
   @override
   void dispose() {
     _cooldownTimer?.cancel();
     _pinCtrl.dispose();
     super.dispose();
   }
-
+ 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -190,21 +189,21 @@ class _LockOverlayScreenState extends State<LockOverlayScreen> {
     );
   }
 }
-
+ 
 class AddMemberScreen extends StatefulWidget {
   const AddMemberScreen({super.key, required this.store});
   final AppStore store;
-
+ 
   @override
   State<AddMemberScreen> createState() => _AddMemberScreenState();
 }
-
+ 
 class _AddMemberScreenState extends State<AddMemberScreen> {
   final TextEditingController _idCtrl = TextEditingController();
   final TextEditingController _nameCtrl = TextEditingController();
   String? _selectedGroupId;
   bool _scanHandled = false;
-
+ 
   @override
   void initState() {
     super.initState();
@@ -212,20 +211,20 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
       _selectedGroupId = widget.store.groups.first.id;
     }
   }
-
+ 
   @override
   void dispose() {
     _idCtrl.dispose();
     _nameCtrl.dispose();
     super.dispose();
   }
-
+ 
   String get _myQrPayload => jsonEncode(<String, String>{
         'app': 'tsunagaru_call',
         'id': widget.store.myInviteId,
         'name': widget.store.myName,
       });
-
+ 
   Future<void> _submitId(String rawId, {String? name}) async {
     final id = rawId.trim();
     if (id.isEmpty) return;
@@ -241,7 +240,7 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
     _idCtrl.clear();
     _nameCtrl.clear();
   }
-
+ 
   void _onQrDetected(BarcodeCapture capture) {
     if (_scanHandled) return;
     for (final b in capture.barcodes) {
@@ -251,7 +250,7 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
       String parsedId = raw;
       String? parsedName;
       try {
-        final map = jsonDecode(raw) as Map<String, dynamic>;
+        final map = jsonDecode(raw) as JsonMap;
         if (map['id'] != null) parsedId = map['id'].toString();
         if (map['name'] != null) parsedName = map['name'].toString();
       } catch (_) {}
@@ -261,7 +260,7 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
       return;
     }
   }
-
+ 
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
@@ -384,7 +383,7 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
       ),
     );
   }
-
+ 
   Widget _buildGroupSelector() {
     return Wrap(
       spacing: 8,

@@ -1,23 +1,23 @@
 import 'package:flutter/material.dart';
-
+ 
 import '../models.dart';
 import '../services/core_services.dart';
 import '../store/app_store.dart';
 import 'lock_and_qr_screens.dart';
-
+ 
 class SettingsTab extends StatefulWidget {
   const SettingsTab({super.key, required this.store});
   final AppStore store;
-
+ 
   @override
   State<SettingsTab> createState() => _SettingsTabState();
 }
-
+ 
 class _SettingsTabState extends State<SettingsTab> {
   late TextEditingController _nameCtrl;
   late TextEditingController _urlCtrl;
   late TextEditingController _tokenCtrl;
-
+ 
   @override
   void initState() {
     super.initState();
@@ -25,7 +25,7 @@ class _SettingsTabState extends State<SettingsTab> {
     _urlCtrl = TextEditingController(text: widget.store.liveKitUrl);
     _tokenCtrl = TextEditingController(text: widget.store.liveKitToken);
   }
-
+ 
   @override
   void dispose() {
     _nameCtrl.dispose();
@@ -33,7 +33,7 @@ class _SettingsTabState extends State<SettingsTab> {
     _tokenCtrl.dispose();
     super.dispose();
   }
-
+ 
   Future<void> _configurePin() async {
     final pinCtrl = TextEditingController();
     try {
@@ -70,7 +70,7 @@ class _SettingsTabState extends State<SettingsTab> {
       pinCtrl.dispose();
     }
   }
-
+ 
   @override
   Widget build(BuildContext context) {
     final s = widget.store;
@@ -91,7 +91,7 @@ class _SettingsTabState extends State<SettingsTab> {
           ),
         ),
         const SizedBox(height: 12),
-
+ 
         const Text('メッセージ自動消去の既定設定',
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         const SizedBox(height: 6),
@@ -117,7 +117,7 @@ class _SettingsTabState extends State<SettingsTab> {
           ),
         ),
         const SizedBox(height: 12),
-
+ 
         const Text('セキュリティロック（指紋・暗証番号）',
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         Card(
@@ -174,7 +174,7 @@ class _SettingsTabState extends State<SettingsTab> {
           ),
         ),
         const SizedBox(height: 12),
-
+ 
         const Text('通信ガード・プライバシー設定',
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         Card(
@@ -225,7 +225,7 @@ class _SettingsTabState extends State<SettingsTab> {
           ),
         ),
         const SizedBox(height: 12),
-
+ 
         const Text('Firebase クラウド同期・着信通知テスト',
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         Card(
@@ -255,7 +255,7 @@ class _SettingsTabState extends State<SettingsTab> {
           ),
         ),
         const SizedBox(height: 12),
-
+ 
         const Text('プロフィール・LiveKit通話接続',
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         Card(
@@ -287,7 +287,7 @@ class _SettingsTabState extends State<SettingsTab> {
           ),
         ),
         const SizedBox(height: 12),
-
+ 
         Card(
           child: ListTile(
             leading: const Icon(Icons.system_update_alt),

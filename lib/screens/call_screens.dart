@@ -1,13 +1,13 @@
 import 'dart:async';
-
+ 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:livekit_client/livekit_client.dart' as lk;
-
+ 
 import '../models.dart';
 import '../services/core_services.dart';
 import '../store/app_store.dart';
-
+ 
 class IncomingCallScreen extends StatelessWidget {
   const IncomingCallScreen({
     super.key,
@@ -15,11 +15,11 @@ class IncomingCallScreen extends StatelessWidget {
     required this.payload,
     required this.onAccept,
   });
-
+ 
   final AppStore store;
   final IncomingCallPayload payload;
   final void Function(bool withVideo) onAccept;
-
+ 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -114,7 +114,7 @@ class IncomingCallScreen extends StatelessWidget {
     );
   }
 }
-
+ 
 class CallScreen extends StatefulWidget {
   const CallScreen({
     super.key,
@@ -123,16 +123,16 @@ class CallScreen extends StatefulWidget {
     required this.initialVideo,
     this.callId,
   });
-
+ 
   final AppStore store;
   final ChatGroup group;
   final bool initialVideo;
   final String? callId;
-
+ 
   @override
   State<CallScreen> createState() => _CallScreenState();
 }
-
+ 
 class _CallScreenState extends State<CallScreen> {
   lk.Room? _room;
   bool _micOn = true;
@@ -141,7 +141,7 @@ class _CallScreenState extends State<CallScreen> {
   bool _connecting = false;
   late final String _activeCallId;
   String _status = '通話準備中...';
-
+ 
   @override
   void initState() {
     super.initState();
@@ -161,7 +161,7 @@ class _CallScreenState extends State<CallScreen> {
     }
     _connectCall();
   }
-
+ 
   Future<void> _connectCall() async {
     final url = widget.store.liveKitUrl.trim();
     final token = widget.store.liveKitToken.trim();
@@ -171,12 +171,12 @@ class _CallScreenState extends State<CallScreen> {
       });
       return;
     }
-
+ 
     setState(() {
       _connecting = true;
       _status = 'LiveKit ルームへ接続中...';
     });
-
+ 
     try {
       await SafeRunner.runWithRetry<void>(
         maxAttempts: 2,
@@ -215,11 +215,11 @@ class _CallScreenState extends State<CallScreen> {
       }
     }
   }
-
+ 
   void _onRoomUpdate() {
     if (mounted) setState(() {});
   }
-
+ 
   Future<void> _toggleMic() async {
     setState(() => _micOn = !_micOn);
     try {
@@ -228,7 +228,7 @@ class _CallScreenState extends State<CallScreen> {
       ErrorGuard.record('マイク切替エラー: $e', s);
     }
   }
-
+ 
   Future<void> _toggleCam() async {
     if (!_camOn) {
       final ok = await NetworkGuard.confirmIfNotWifi(
@@ -245,7 +245,7 @@ class _CallScreenState extends State<CallScreen> {
       ErrorGuard.record('カメラ切替エラー: $e', s);
     }
   }
-
+ 
   Future<void> _openInCallChat() async {
     final textCtrl = TextEditingController();
     try {
@@ -359,7 +359,7 @@ class _CallScreenState extends State<CallScreen> {
       textCtrl.dispose();
     }
   }
-
+ 
   lk.VideoTrack? _activeVideo(lk.Participant p) {
     for (final pub in p.videoTrackPublications) {
       final t = pub.track;
@@ -367,7 +367,7 @@ class _CallScreenState extends State<CallScreen> {
     }
     return null;
   }
-
+ 
   @override
   void dispose() {
     unawaited(widget.store.cloud.updateCallStatus(_activeCallId, 'ended'));
@@ -376,14 +376,14 @@ class _CallScreenState extends State<CallScreen> {
     _room?.dispose();
     super.dispose();
   }
-
+ 
   @override
   Widget build(BuildContext context) {
     final liveParticipants = <lk.Participant>[
       if (_room?.localParticipant != null) _room!.localParticipant!,
       if (_room != null) ..._room!.remoteParticipants.values,
     ];
-
+ 
     return Scaffold(
       backgroundColor: const Color(0xFF121820),
       appBar: AppBar(
@@ -453,7 +453,7 @@ class _CallScreenState extends State<CallScreen> {
                     ),
                   );
                 }
-
+ 
                 final member = widget.group.members[i];
                 final isMe = member == widget.store.myName;
                 return Container(
