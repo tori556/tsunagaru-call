@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -502,6 +503,10 @@ class AppStore extends ChangeNotifier {
   }
 
   Future<void> deleteGroup(String groupId) async {
+    try {
+      await FirebaseFirestore.instance.collection('groups').doc(groupId).delete();
+    } catch (_) {}
+
     groups.removeWhere((g) => g.id == groupId);
     await saveImmediate();
   }
