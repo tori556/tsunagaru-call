@@ -44,6 +44,24 @@ class AppStore extends ChangeNotifier {
   Timer? _saveDebounceTimer;
  
   String get myViewerKey => cloud.uid ?? myInviteId;
+
+  String displayNameForGroup(String groupId) => myName;
+
+  Future<void> updateMyDisplayName(String newName) async {
+    final clean = newName.trim().isEmpty ? '自分' : newName.trim();
+    final oldName = myName;
+    myName = clean;
+    for (final g in groups) {
+      final idx = g.members.indexOf(oldName);
+      if (idx >= 0) {
+        g.members[idx] = clean;
+      }
+      if (cloud.isReady) {
+        unawaited(cloud.syncGroupToCloud(g));
+      }
+    }
+    await saveImmediate(syncProfile: true);
+  }
  
   Future<void> init() async {
     await _load();
@@ -204,49 +222,10 @@ class AppStore extends ChangeNotifier {
     if (myInviteId.isEmpty) {
       myInviteId = _generateInviteId();
     }
-    if (groups.isEmpty) {
-      groups = _defaultGroups();
-    }
     _runHousekeeping(notify: false);
     notifyListeners();
   }
  
-  List<ChatGroup> _defaultGroups() {
-    final now = DateTime.now();
-    return <ChatGroup>[
-      ChatGroup(
-        id: 'family',
-        name: '家族ルーム',
-        category: '家族',
-        members: <String>['自分', 'お母さん', '子ども'],
-        ringtone: '家族ベル',
-        messages: <ChatMessage>[
-          ChatMessage(
-            id: 'welcome_1',
-            sender: 'お母さん',
-            text:
-                '強化版へようこそ！長押しで編集・返信・ピン留め・転送・リアクションができます。下のボタンからスタンプ・ボイス・15秒動画・無制限ファイル・1回表示写真も使えます。',
-            createdAt: now.subtract(const Duration(minutes: 3)),
-            readBy: <String>['お母さん', '自分'],
-          ),
-        ],
-      ),
-      ChatGroup(
-        id: 'relatives',
-        name: '親戚連絡網',
-        category: '親戚',
-        members: <String>['自分', 'おじいちゃん', 'おばあちゃん'],
-        ringtone: '親戚メロディ',
-      ),
-      ChatGroup(
-        id: 'work',
-        name: '仕事・連絡用',
-        category: '仕事',
-        members: <String>['自分', '同僚A', '同僚B'],
-        ringtone: '仕事用トーン',
-      ),
-    ];
-  }
  
   void save({bool syncProfile = false}) {
     notifyListeners();
@@ -443,6 +422,90 @@ class AppStore extends ChangeNotifier {
     await saveImmediate();
     return profile;
   }
+
+  Future<void> removeContact(String inviteId) async {
+    contacts.removeWhere((c) => c.inviteId == inviteId);
+    await saveImmediate();
+  }
+
+  Future<void> addContactToGroup(String groupId, MemberProfile contact) async {
+    final g = findGroup(groupId);
+    if (g == null) return;
+    if (!g.members.contains(contact.name)) {
+      g.members.add(contact.name);
+    }
+    if (contact.uid != null && !g.memberUids.contains(contact.uid)) {
+      g.memberUids.add(contact.uid!);
+    }
+    await saveImmediate();
+    if (cloud.isReady) {
+      unawaited(cloud.syncGroupToCloud(g));
+    }
+  }
+
+  Future<void> removeMemberFromGroup(String groupId, String memberName) async {
+    final g = findGroup(groupId);
+    if (g == null) return;
+    g.members.remove(memberName);
+    for (final c in contacts) {
+      if (c.name == memberName && c.uid != null) {
+        g.memberUids.remove(c.uid);
+      }
+    }
+    await saveImmediate();
+    if (cloud.isReady) {
+      unawaited(cloud.syncGroupToCloud(g));
+    }
+  }
+
+  Future<ChatGroup> openOrCreateDirectChat(MemberProfile contact) async {
+    for (final g in groups) {
+      if (g.category == '個人' &&
+          (g.name == contact.name ||
+              (contact.uid != null && g.memberUids.contains(contact.uid)))) {
+        return g;
+      }
+    }
+    final memberUids = <String>[];
+    if (cloud.uid != null) memberUids.add(cloud.uid!);
+    if (contact.uid != null && !memberUids.contains(contact.uid)) {
+      memberUids.add(contact.uid!);
+    }
+    final direct = ChatGroup(
+      id: 'dm_${DateTime.now().millisecondsSinceEpoch}',
+      name: contact.name,
+      category: '個人',
+      members: <String>{myName, contact.name}.toList(),
+      memberUids: memberUids,
+    );
+    groups.insert(0, direct);
+    await saveImmediate();
+    if (cloud.isReady) {
+      await cloud.syncGroupToCloud(direct);
+      cloud.listenGroupMessages(direct.id, (List<ChatMessage> remoteMsgs) {
+        _mergeRemoteMessages(direct.id, remoteMsgs);
+      });
+    }
+    return direct;
+  }
+
+  Future<void> renameGroup(String groupId, String newName) async {
+    final clean = newName.trim();
+    if (clean.isEmpty) return;
+    final g = findGroup(groupId);
+    if (g == null) return;
+    g.name = clean;
+    await saveImmediate();
+    if (cloud.isReady) {
+      unawaited(cloud.syncGroupToCloud(g));
+    }
+  }
+
+  Future<void> deleteGroup(String groupId) async {
+    groups.removeWhere((g) => g.id == groupId);
+    await saveImmediate();
+  }
+
  
   Future<void> sendMessage(
     String groupId, {
@@ -655,7 +718,14 @@ class AppStore extends ChangeNotifier {
   }
  
   void triggerTestIncomingCall() {
-    final group = groups.isNotEmpty ? groups.first : _defaultGroups().first;
+    final group = groups.isNotEmpty
+        ? groups.first
+        : ChatGroup(
+            id: 'test_call',
+            name: '着信テスト',
+            category: '個人',
+            members: <String>[myName],
+          );
     final payload = IncomingCallPayload(
       callId: 'test_${DateTime.now().millisecondsSinceEpoch}',
       groupId: group.id,

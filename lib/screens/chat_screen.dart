@@ -13,6 +13,7 @@ import 'package:video_player/video_player.dart';
 import '../models.dart';
 import '../services/core_services.dart';
 import '../store/app_store.dart';
+import 'lock_and_qr_screens.dart';
  
 class ChatScreen extends StatefulWidget {
   const ChatScreen({
@@ -559,6 +560,140 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
  
+  void _openMemberManager(ChatGroup group) {
+    final myDisplayName = widget.store.displayNameForGroup(group.id);
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (BuildContext bc) => StatefulBuilder(
+        builder: (_, StateSetter setLocal) {
+          final addableContacts = widget.store.contacts
+              .where((c) => !group.members.contains(c.name))
+              .toList();
+          return SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: Text(
+                          '${group.name} のメンバー管理（${group.members.length}人）',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      FilledButton.icon(
+                        onPressed: () async {
+                          Navigator.of(bc).pop();
+                          await Navigator.of(context).push<void>(
+                            MaterialPageRoute<void>(
+                              builder: (_) => AddMemberScreen(
+                                store: widget.store,
+                                initialGroupId: group.id,
+                                initialTab: 2,
+                              ),
+                            ),
+                          );
+                          if (mounted) setState(() {});
+                        },
+                        icon: const Icon(Icons.qr_code_scanner, size: 18),
+                        label: const Text('QR・ID追加'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('現在のメンバー',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
+                  for (final member in List<String>.from(group.members))
+                    ListTile(
+                      dense: true,
+                      leading: CircleAvatar(
+                        radius: 16,
+                        child: Text(initialLetter(member)),
+                      ),
+                      title: Text(member),
+                      trailing: (member == myDisplayName ||
+                              member == widget.store.myName)
+                          ? const Chip(label: Text('自分'))
+                          : IconButton(
+                              tooltip: 'グループから削除',
+                              icon: const Icon(Icons.person_remove,
+                                  color: Colors.red),
+                              onPressed: () async {
+                                final ok = await showDialog<bool>(
+                                  context: bc,
+                                  builder: (BuildContext dc) => AlertDialog(
+                                    title: const Text('メンバーを削除'),
+                                    content: Text(
+                                      '「$member」を「${group.name}」から外しますか？',
+                                    ),
+                                    actions: <Widget>[
+                                      TextButton(
+                                        onPressed: () =>
+                                            Navigator.of(dc).pop(false),
+                                        child: const Text('キャンセル'),
+                                      ),
+                                      FilledButton(
+                                        style: FilledButton.styleFrom(
+                                          backgroundColor: Colors.red,
+                                        ),
+                                        onPressed: () =>
+                                            Navigator.of(dc).pop(true),
+                                        child: const Text('外す'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                                if (ok == true) {
+                                  await widget.store.removeMemberFromGroup(
+                                    group.id,
+                                    member,
+                                  );
+                                  if (bc.mounted) setLocal(() {});
+                                }
+                              },
+                            ),
+                    ),
+                  if (addableContacts.isNotEmpty) ...<Widget>[
+                    const Divider(),
+                    const Text('登録済み友だちから追加',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 4),
+                    for (final c in addableContacts)
+                      ListTile(
+                        dense: true,
+                        leading: CircleAvatar(
+                          radius: 16,
+                          child: Text(initialLetter(c.name)),
+                        ),
+                        title: Text(c.name),
+                        subtitle: Text('ID: ${c.inviteId}'),
+                        trailing: OutlinedButton.icon(
+                          onPressed: () async {
+                            await widget.store.addContactToGroup(group.id, c);
+                            if (bc.mounted) setLocal(() {});
+                          },
+                          icon: const Icon(Icons.add, size: 16),
+                          label: const Text('追加'),
+                        ),
+                      ),
+                  ],
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   void _openTalkSettings(ChatGroup group) {
     showModalBottomSheet<void>(
       context: context,
@@ -889,6 +1024,11 @@ class _ChatScreenState extends State<ChatScreen> {
                     if (!_searching) _searchCtrl.clear();
                   });
                 },
+              ),
+              IconButton(
+                tooltip: 'メンバー追加・削除',
+                icon: const Icon(Icons.group_add),
+                onPressed: () => _openMemberManager(group),
               ),
               IconButton(
                 tooltip: 'ミュート・カスタム着信音',

@@ -117,8 +117,15 @@ class _TsunagaruCallAppState extends State<TsunagaruCallApp>
               store: _store,
               payload: call,
               onAccept: (bool withVideo) {
-                final group =
-                    _store.findGroup(call.groupId) ?? _store.groups.first;
+                final group = _store.findGroup(call.groupId) ??
+                    (_store.groups.isNotEmpty
+                        ? _store.groups.first
+                        : ChatGroup(
+                            id: call.groupId,
+                            name: call.groupName,
+                            category: '個人',
+                            members: <String>[_store.myName, call.callerName],
+                          ));
                 _store.clearIncomingCall(status: 'active');
                 Navigator.of(context).push<void>(
                   MaterialPageRoute<void>(
@@ -206,7 +213,7 @@ class _MainShellState extends State<MainShell> {
  
   Future<void> _openCreateGroupDialog() async {
     final nameCtrl = TextEditingController();
-    final membersCtrl = TextEditingController(text: 'お母さん, お父さん');
+    final membersCtrl = TextEditingController();
     var category = '家族';
  
     try {
@@ -237,7 +244,7 @@ class _MainShellState extends State<MainShell> {
                 const SizedBox(height: 8),
                 TextField(
                   controller: membersCtrl,
-                  decoration: const InputDecoration(labelText: 'メンバー（カンマ区切り）'),
+                  decoration: const InputDecoration(labelText: 'メンバー（カンマ区切り・空欄でも作成可）'),
                 ),
               ],
             ),
@@ -263,6 +270,87 @@ class _MainShellState extends State<MainShell> {
     }
   }
  
+  Future<void> _openRenameGroupDialog(ChatGroup group) async {
+    final ctrl = TextEditingController(text: group.name);
+    try {
+      final action = await showDialog<String>(
+        context: context,
+        builder: (BuildContext dc) => AlertDialog(
+          title: const Text('グループ名を変更'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              TextField(
+                controller: ctrl,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: '新しいグループ名',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextButton.icon(
+                style: TextButton.styleFrom(foregroundColor: Colors.red),
+                onPressed: () => Navigator.of(dc).pop('delete'),
+                icon: const Icon(Icons.delete_outline, size: 18),
+                label: const Text('このグループを削除'),
+              ),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dc).pop(null),
+              child: const Text('キャンセル'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dc).pop('rename'),
+              child: const Text('変更を保存'),
+            ),
+          ],
+        ),
+      );
+      if (action == 'rename' && ctrl.text.trim().isNotEmpty) {
+        final nextName = ctrl.text.trim();
+        await widget.store.renameGroup(group.id, nextName);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('グループ名を「$nextName」に変更しました')),
+          );
+        }
+      } else if (action == 'delete' && mounted) {
+        final confirm = await showDialog<bool>(
+          context: context,
+          builder: (BuildContext dc) => AlertDialog(
+            title: const Text('グループを削除'),
+            content: Text('「${group.name}」を一覧から削除しますか？'),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.of(dc).pop(false),
+                child: const Text('キャンセル'),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                onPressed: () => Navigator.of(dc).pop(true),
+                child: const Text('削除する'),
+              ),
+            ],
+          ),
+        );
+        if (confirm == true) {
+          await widget.store.deleteGroup(group.id);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('「${group.name}」を削除しました')),
+            );
+          }
+        }
+      }
+    } finally {
+      ctrl.dispose();
+    }
+  }
+
   void _showErrorLogs() {
     showDialog<void>(
       context: context,
@@ -458,6 +546,22 @@ class _MainShellState extends State<MainShell> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => Navigator.of(context).push<void>(
+                      MaterialPageRoute<void>(
+                        builder: (_) => AddMemberScreen(
+                          store: widget.store,
+                          initialTab: 2,
+                        ),
+                      ),
+                    ),
+                    icon: const Icon(Icons.person_add),
+                    label: const Text('友だち追加・一覧（QR / ID / 削除）'),
+                  ),
+                ),
               ],
             ),
           ),
@@ -467,7 +571,7 @@ class _MainShellState extends State<MainShell> {
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
-            children: const <String>['すべて', '家族', '親戚', '仕事']
+            children: const <String>['すべて', '個人', '家族', '親戚', '仕事']
                 .map(
                   (String cat) => Padding(
                     padding: const EdgeInsets.only(right: 8),
@@ -483,9 +587,33 @@ class _MainShellState extends State<MainShell> {
         ),
         const SizedBox(height: 8),
  
+        if (filtered.isEmpty)
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                children: const <Widget>[
+                  Icon(Icons.forum_outlined, size: 40, color: Color(0xFF1B8A5A)),
+                  SizedBox(height: 8),
+                  Text(
+                    'まだグループ・トークはありません',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    '上の「友だち追加・一覧」から個人を登録するか、右下の「グループ追加」から作成できます。\n※ 作成したグループは長押しで名前変更・削除ができます。',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 12, color: Colors.black54),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
         for (final group in filtered)
           Card(
             child: ListTile(
+              onLongPress: () => _openRenameGroupDialog(group),
               leading: CircleAvatar(child: Text(initialLetter(group.category))),
               title: Row(
                 children: <Widget>[
@@ -611,6 +739,14 @@ Card(
           ),
         ),
         const SizedBox(height: 8),
+        if (widget.store.groups.isEmpty)
+          const Card(
+            child: ListTile(
+              leading: Icon(Icons.info_outline, color: Color(0xFF1B8A5A)),
+              title: Text('アプリ内グループ通話'),
+              subtitle: Text('トーク画面でグループや1対1トークを作成すると、ここから音声・ビデオ通話ができます。'),
+            ),
+          ),
         for (final group in widget.store.groups)
           Card(
             child: Padding(

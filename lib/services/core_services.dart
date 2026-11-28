@@ -139,60 +139,78 @@ class NetworkGuard {
   }
 }
  
+class _LaunchCandidate {
+  const _LaunchCandidate(this.uri, this.mode);
+  final Uri uri;
+  final LaunchMode mode;
+}
+
 class ExternalAppLauncher {
-  static Future<void> openTimeTree(BuildContext context) => _launch(
+  static Future<void> openTimeTree(BuildContext context) => _launchCandidates(
         context,
         name: 'TimeTree',
-        primary: Uri.parse('timetree://'),
-        fallback: Uri.parse('https://timetreeapp.com/'),
+        candidates: <_LaunchCandidate>[
+          _LaunchCandidate(Uri.parse('timetree://'), LaunchMode.externalApplication),
+          _LaunchCandidate(
+            Uri.parse('https://timetreeapp.com/'),
+            LaunchMode.externalNonBrowserApplication,
+          ),
+          _LaunchCandidate(
+            Uri.parse('https://timetreeapp.com/'),
+            LaunchMode.externalApplication,
+          ),
+        ],
       );
- 
-  static Future<void> openLine(BuildContext context) => _launch(
+
+  static Future<void> openLine(BuildContext context) => _launchCandidates(
         context,
         name: 'LINE',
-        primary: Uri.parse('line://'),
-        fallback: Uri.parse('https://line.me/'),
+        candidates: <_LaunchCandidate>[
+          _LaunchCandidate(Uri.parse('line://'), LaunchMode.externalApplication),
+          _LaunchCandidate(
+            Uri.parse('https://line.me/R/'),
+            LaunchMode.externalNonBrowserApplication,
+          ),
+          _LaunchCandidate(
+            Uri.parse('https://line.me/'),
+            LaunchMode.externalApplication,
+          ),
+        ],
       );
- 
-  static Future<void> openUrl(BuildContext context, String url) => _launch(
+
+  static Future<void> openUrl(BuildContext context, String url) =>
+      _launchCandidates(
         context,
         name: 'リンク',
-        primary: Uri.parse(url),
-        fallback: Uri.parse(url),
+        candidates: <_LaunchCandidate>[
+          _LaunchCandidate(Uri.parse(url), LaunchMode.externalApplication),
+          _LaunchCandidate(Uri.parse(url), LaunchMode.platformDefault),
+        ],
       );
- 
-  static Future<void> _launch(
+
+  static Future<void> _launchCandidates(
     BuildContext context, {
     required String name,
-    required Uri primary,
-    required Uri fallback,
+    required List<_LaunchCandidate> candidates,
   }) async {
-    try {
-      final opened = await SafeRunner.runWithRetry<bool>(
-        maxAttempts: 2,
-        task: (_) async {
-          if (await launchUrl(primary, mode: LaunchMode.externalApplication)) {
-            return true;
-          }
-          return launchUrl(fallback, mode: LaunchMode.externalApplication);
-        },
+    for (final c in candidates) {
+      try {
+        final ok = await launchUrl(c.uri, mode: c.mode);
+        if (ok) return;
+      } catch (e, s) {
+        ErrorGuard.record('$name 起動試行(${c.uri}): $e', s);
+      }
+    }
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$name を開けませんでした。アプリまたはブラウザの状態を確認してください。'),
+        ),
       );
-      if (!opened && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$name を開けませんでした。')),
-        );
-      }
-    } catch (e, s) {
-      ErrorGuard.record('$name 起動エラー: $e', s);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$name の起動に失敗しましたが安全に動作中です。')),
-        );
-      }
     }
   }
 }
- 
+
 class UpdateChecker {
   static int get currentBuildNumber => int.tryParse(appBuildNumberStr) ?? 1;
  

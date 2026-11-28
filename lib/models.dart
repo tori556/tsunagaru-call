@@ -325,7 +325,7 @@ class ChatGroup {
         scheduledMessages = scheduledMessages ?? <ChatMessage>[];
  
   final String id;
-  final String name;
+  String name;
   final String category;
   final List<String> members;
   final List<String> memberUids;
