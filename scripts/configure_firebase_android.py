@@ -144,3 +144,44 @@ for gradle_file in [
     if gtxt != gorig:
         gradle_file.write_text(gtxt, encoding="utf-8")
         print(f"[updated] {gradle_file}")
+
+# 3. AndroidManifest.xml に INTERNET 権限を保証 & R8 コード圧縮を無効化（Firestore unavailable 防止）
+man_now = manifest_path.read_text(encoding="utf-8", errors="ignore")
+if "android.permission.INTERNET" not in man_now and "<application" in man_now:
+    man_now = man_now.replace(
+        "<application",
+        '    <uses-permission android:name="android.permission.INTERNET" />
+    <application',
+        1,
+    )
+    manifest_path.write_text(man_now, encoding="utf-8")
+    print("[updated] Added INTERNET permission to AndroidManifest.xml")
+
+app_kts = Path("android/app/build.gradle.kts")
+app_groovy = Path("android/app/build.gradle")
+if app_kts.exists():
+    atxt = app_kts.read_text(encoding="utf-8", errors="ignore")
+    if "isMinifyEnabled = false" not in atxt:
+        atxt = re.sub(
+            r'(getByName\("release"\)\s*\{|release\s*\{)',
+            r'\1
+            isMinifyEnabled = false
+            isShrinkResources = false',
+            atxt,
+            count=1,
+        )
+        app_kts.write_text(atxt, encoding="utf-8")
+        print("[updated] Disabled R8 minify/shrink in android/app/build.gradle.kts")
+elif app_groovy.exists():
+    atxt = app_groovy.read_text(encoding="utf-8", errors="ignore")
+    if "minifyEnabled false" not in atxt:
+        atxt = re.sub(
+            r'(release\s*\{)',
+            r'\1
+            minifyEnabled false
+            shrinkResources false',
+            atxt,
+            count=1,
+        )
+        app_groovy.write_text(atxt, encoding="utf-8")
+        print("[updated] Disabled R8 minify/shrink in android/app/build.gradle")
