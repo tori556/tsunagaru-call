@@ -9,6 +9,7 @@ import 'models.dart';
 import 'screens/call_screens.dart';
 import 'screens/chat_screen.dart';
 import 'screens/lock_and_qr_screens.dart';
+import 'screens/phone_dialer_screen.dart';
 import 'screens/settings_screen.dart';
 import 'services/cloud_sync_service.dart';
 import 'services/core_services.dart';
@@ -337,7 +338,17 @@ class _MainShellState extends State<MainShell> {
               icon: const Icon(Icons.group_add),
               label: const Text('グループ追加'),
             )
-          : null,
+          : _tabIndex == 1
+              ? FloatingActionButton.extended(
+                  onPressed: () => Navigator.of(context).push<void>(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const PhoneDialerScreen(initialTab: 0),
+                    ),
+                  ),
+                  icon: const Icon(Icons.dialpad),
+                  label: const Text('固定・携帯へ発信'),
+                )
+              : null,
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tabIndex,
         onDestinationSelected: (int i) => setState(() => _tabIndex = i),
@@ -529,9 +540,66 @@ class _MainShellState extends State<MainShell> {
  
   Widget _buildCallTab() {
     return ListView(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 88),
       children: <Widget>[
-        Card(
+                Card(
+          color: const Color(0xFFE8F5E9),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                const Row(
+                  children: <Widget>[
+                    Icon(Icons.dialpad, color: Color(0xFF1B8A5A)),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '固定電話・携帯電話へ発信',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'スマホの通話回線を使って、固定電話や携帯電話へ発信できます。外線用の電話帳と発信履歴も保存できます。',
+                  style: TextStyle(fontSize: 12),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: () => Navigator.of(context).push<void>(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const PhoneDialerScreen(initialTab: 0),
+                          ),
+                        ),
+                        icon: const Icon(Icons.dialpad),
+                        label: const Text('ダイヤル'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => Navigator.of(context).push<void>(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const PhoneDialerScreen(initialTab: 1),
+                          ),
+                        ),
+                        icon: const Icon(Icons.contacts),
+                        label: const Text('外線電話帳'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+Card(
           child: ListTile(
             leading: const Icon(Icons.graphic_eq, color: Color(0xFF1B8A5A)),
             title: const Text('複数人通話・ノイズキャンセリング・バックグラウンド着信'),
