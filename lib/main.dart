@@ -37,19 +37,11 @@ void main() {
       };
  
       ErrorWidget.builder = (FlutterErrorDetails details) {
-        return const Material(
-          color: Color(0xFFFFF8E1),
-          child: Center(
-            child: Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                '画面を一時復帰しています。操作をやり直してください。',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Color(0xFF5D4037)),
-              ),
-            ),
-          ),
+        ErrorGuard.record(
+          '描画エラーを安全スキップ: ${details.exceptionAsString()}',
+          details.stack,
         );
+        return const SizedBox.shrink();
       };
  
       runApp(const TsunagaruCallApp());
@@ -222,10 +214,11 @@ class _MainShellState extends State<MainShell> {
         builder: (BuildContext dc) => StatefulBuilder(
           builder: (BuildContext _, StateSetter setLocal) => AlertDialog(
             title: const Text('新しいグループを作成'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
                 TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'グループ名')),
                 const SizedBox(height: 10),
                 const Text('分類'),
@@ -246,7 +239,8 @@ class _MainShellState extends State<MainShell> {
                   controller: membersCtrl,
                   decoration: const InputDecoration(labelText: 'メンバー（カンマ区切り・空欄でも作成可）'),
                 ),
-              ],
+                ],
+              ),
             ),
             actions: <Widget>[
               TextButton(onPressed: () => Navigator.of(dc).pop(false), child: const Text('キャンセル')),
@@ -265,8 +259,7 @@ class _MainShellState extends State<MainShell> {
         await widget.store.addGroup(nameCtrl.text.trim(), category, members);
       }
     } finally {
-      nameCtrl.dispose();
-      membersCtrl.dispose();
+      disposeControllersSafely(<ChangeNotifier>[nameCtrl, membersCtrl]);
     }
   }
  
@@ -277,26 +270,27 @@ class _MainShellState extends State<MainShell> {
         context: context,
         builder: (BuildContext dc) => AlertDialog(
           title: const Text('グループ名を変更'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              TextField(
-                controller: ctrl,
-                autofocus: true,
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                TextField(
+                  controller: ctrl,
                 decoration: const InputDecoration(
                   labelText: '新しいグループ名',
                   border: OutlineInputBorder(),
                 ),
               ),
               const SizedBox(height: 12),
-              TextButton.icon(
-                style: TextButton.styleFrom(foregroundColor: Colors.red),
-                onPressed: () => Navigator.of(dc).pop('delete'),
-                icon: const Icon(Icons.delete_outline, size: 18),
-                label: const Text('このグループを削除'),
-              ),
-            ],
+                TextButton.icon(
+                  style: TextButton.styleFrom(foregroundColor: Colors.red),
+                  onPressed: () => Navigator.of(dc).pop('delete'),
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  label: const Text('このグループを削除'),
+                ),
+              ],
+            ),
           ),
           actions: <Widget>[
             TextButton(
@@ -347,7 +341,7 @@ class _MainShellState extends State<MainShell> {
         }
       }
     } finally {
-      ctrl.dispose();
+      disposeControllersSafely(<ChangeNotifier>[ctrl]);
     }
   }
 
@@ -452,10 +446,24 @@ class _MainShellState extends State<MainShell> {
   Widget _buildTalkTab() {
     final isWifi = NetworkGuard.isWifiOrEthernet(_connectivity);
     final isOff = NetworkGuard.isOffline(_connectivity);
-    final filtered = _selectedCategory == 'すべて'
+    final visibleCategories = <String>['すべて', '個人'];
+    for (final cat in const <String>['家族', '親戚', '仕事']) {
+      if (widget.store.groups.any((g) => g.category == cat)) {
+        visibleCategories.add(cat);
+      }
+    }
+    for (final g in widget.store.groups) {
+      if (!visibleCategories.contains(g.category)) {
+        visibleCategories.add(g.category);
+      }
+    }
+    final activeCategory = visibleCategories.contains(_selectedCategory)
+        ? _selectedCategory
+        : 'すべて';
+    final filtered = activeCategory == 'すべて'
         ? widget.store.groups
         : widget.store.groups
-            .where((g) => g.category == _selectedCategory)
+            .where((g) => g.category == activeCategory)
             .toList();
  
     return ListView(
@@ -571,13 +579,13 @@ class _MainShellState extends State<MainShell> {
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
-            children: const <String>['すべて', '個人', '家族', '親戚', '仕事']
+            children: visibleCategories
                 .map(
                   (String cat) => Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: ChoiceChip(
                       label: Text(cat),
-                      selected: _selectedCategory == cat,
+                      selected: activeCategory == cat,
                       onSelected: (_) => setState(() => _selectedCategory = cat),
                     ),
                   ),

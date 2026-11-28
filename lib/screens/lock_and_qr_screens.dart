@@ -423,7 +423,7 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
                               if (mounted) setState(() {});
                             }
                           } finally {
-                            ctrl.dispose();
+                            disposeControllersSafely(<ChangeNotifier>[ctrl]);
                           }
                         },
                         icon: const Icon(Icons.edit, size: 16),

@@ -67,7 +67,7 @@ class _SettingsTabState extends State<SettingsTab> {
         }
       }
     } finally {
-      pinCtrl.dispose();
+      disposeControllersSafely(<ChangeNotifier>[pinCtrl]);
     }
   }
  

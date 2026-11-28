@@ -421,8 +421,7 @@ class _PhoneDialerScreenState extends State<PhoneDialerScreen> {
         );
       }
     } finally {
-      nameCtrl.dispose();
-      phoneCtrl.dispose();
+      disposeControllersSafely(<ChangeNotifier>[nameCtrl, phoneCtrl]);
     }
   }
 

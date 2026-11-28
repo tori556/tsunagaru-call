@@ -319,3 +319,13 @@ class AuthLockService {
     }
   }
 }
+
+void disposeControllersSafely(List<ChangeNotifier> controllers) {
+  Future<void>.delayed(const Duration(milliseconds: 600), () {
+    for (final c in controllers) {
+      try {
+        c.dispose();
+      } catch (_) {}
+    }
+  });
+}

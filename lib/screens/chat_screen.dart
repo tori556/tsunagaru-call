@@ -499,10 +499,7 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       }
     } finally {
-      qCtrl.dispose();
-      o1.dispose();
-      o2.dispose();
-      o3.dispose();
+      disposeControllersSafely(<ChangeNotifier>[qCtrl, o1, o2, o3]);
     }
   }
  
@@ -830,7 +827,7 @@ class _ChatScreenState extends State<ChatScreen> {
         widget.store.editMessage(group.id, msg, ctrl.text.trim());
       }
     } finally {
-      ctrl.dispose();
+      disposeControllersSafely(<ChangeNotifier>[ctrl]);
     }
   }
  

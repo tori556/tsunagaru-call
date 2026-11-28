@@ -356,7 +356,7 @@ class _CallScreenState extends State<CallScreen> {
         ),
       );
     } finally {
-      textCtrl.dispose();
+      disposeControllersSafely(<ChangeNotifier>[textCtrl]);
     }
   }
  
