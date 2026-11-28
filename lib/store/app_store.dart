@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:convert';
@@ -42,6 +43,7 @@ class AppStore extends ChangeNotifier {
   IncomingCallPayload? activeIncomingCall;
  
   Timer? _housekeepingTimer;
+  Timer? _ringTimer;
   Timer? _saveDebounceTimer;
  
   String get myViewerKey => cloud.uid ?? myInviteId;
@@ -72,11 +74,13 @@ class AppStore extends ChangeNotifier {
  
     cloud.onIncomingCall = (IncomingCallPayload payload) {
       activeIncomingCall = payload;
+      _startRingingFeedback(payload);
       notifyListeners();
     };
     cloud.onCallCancelled = (String callId) {
       if (activeIncomingCall?.callId == callId) {
         activeIncomingCall = null;
+        _stopRingingFeedback();
         notifyListeners();
       }
     };
@@ -786,7 +790,28 @@ class AppStore extends ChangeNotifier {
     notifyListeners();
   }
  
+  void _startRingingFeedback(IncomingCallPayload payload) {
+    _stopRingingFeedback();
+    unawaited(CloudSyncService.showIncomingCallNotification(payload));
+    SystemSound.play(SystemSoundType.alert);
+    HapticFeedback.vibrate();
+    _ringTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (activeIncomingCall == null) {
+        _stopRingingFeedback();
+        return;
+      }
+      SystemSound.play(SystemSoundType.alert);
+      HapticFeedback.vibrate();
+    });
+  }
+
+  void _stopRingingFeedback() {
+    _ringTimer?.cancel();
+    _ringTimer = null;
+  }
+
   void clearIncomingCall({required String status}) {
+    _stopRingingFeedback();
     final call = activeIncomingCall;
     activeIncomingCall = null;
     if (call != null) {

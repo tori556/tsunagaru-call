@@ -6,6 +6,7 @@ import 'package:livekit_client/livekit_client.dart' as lk;
  
 import '../models.dart';
 import '../services/core_services.dart';
+import '../services/webrtc_call_service.dart';
 import '../store/app_store.dart';
  
 class IncomingCallScreen extends StatelessWidget {
@@ -135,6 +136,7 @@ class CallScreen extends StatefulWidget {
  
 class _CallScreenState extends State<CallScreen> {
   lk.Room? _room;
+  final WebRtcCallService _webrtc = WebRtcCallService();
   bool _micOn = true;
   late bool _camOn;
   late bool _noiseCancel;
@@ -166,9 +168,15 @@ class _CallScreenState extends State<CallScreen> {
     final url = widget.store.liveKitUrl.trim();
     final token = widget.store.liveKitToken.trim();
     if (url.isEmpty || token.isEmpty) {
-      setState(() {
-        _status = 'ローカル複数人通話（ノイズ抑制: ${_noiseCancel ? "ON" : "OFF"}）';
-      });
+      await _webrtc.start(
+        callId: _activeCallId,
+        isCaller: widget.callId == null,
+        video: _camOn,
+        micOn: _micOn,
+        onStatus: (String s) {
+          if (mounted) setState(() => _status = s);
+        },
+      );
       return;
     }
  
@@ -370,6 +378,7 @@ class _CallScreenState extends State<CallScreen> {
  
   @override
   void dispose() {
+    unawaited(_webrtc.dispose());
     unawaited(widget.store.cloud.updateCallStatus(_activeCallId, 'ended'));
     _room?.removeListener(_onRoomUpdate);
     unawaited(_room?.disconnect());

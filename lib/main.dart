@@ -61,6 +61,7 @@ class TsunagaruCallApp extends StatefulWidget {
  
 class _TsunagaruCallAppState extends State<TsunagaruCallApp>
     with WidgetsBindingObserver {
+  final GlobalKey<NavigatorState> _navKey = GlobalKey<NavigatorState>();
   final AppStore _store = AppStore();
  
   @override
@@ -90,47 +91,60 @@ class _TsunagaruCallAppState extends State<TsunagaruCallApp>
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: _navKey,
       title: 'trancefer',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1B8A5A)),
         useMaterial3: true,
       ),
+      builder: (BuildContext context, Widget? child) {
+        return AnimatedBuilder(
+          animation: _store,
+          builder: (BuildContext ctx, _) {
+            final call = _store.activeIncomingCall;
+            return Stack(
+              children: <Widget>[
+                if (child != null) child,
+                if (call != null)
+                  Positioned.fill(
+                    child: IncomingCallScreen(
+                      store: _store,
+                      payload: call,
+                      onAccept: (bool withVideo) {
+                        final group = _store.findGroup(call.groupId) ??
+                            (_store.groups.isNotEmpty
+                                ? _store.groups.first
+                                : ChatGroup(
+                                    id: call.groupId,
+                                    name: call.groupName,
+                                    category: '個人',
+                                    members: <String>[_store.myName, call.callerName],
+                                  ));
+                        _store.clearIncomingCall(status: 'active');
+                        _navKey.currentState?.push<void>(
+                          MaterialPageRoute<void>(
+                            builder: (_) => CallScreen(
+                              store: _store,
+                              group: group,
+                              initialVideo: withVideo,
+                              callId: call.callId,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            );
+          },
+        );
+      },
       home: AnimatedBuilder(
         animation: _store,
         builder: (BuildContext context, _) {
           if (_store.lockEnabled && !_store.isUnlocked) {
             return LockOverlayScreen(store: _store);
-          }
- 
-          if (_store.activeIncomingCall != null) {
-            final call = _store.activeIncomingCall!;
-            return IncomingCallScreen(
-              store: _store,
-              payload: call,
-              onAccept: (bool withVideo) {
-                final group = _store.findGroup(call.groupId) ??
-                    (_store.groups.isNotEmpty
-                        ? _store.groups.first
-                        : ChatGroup(
-                            id: call.groupId,
-                            name: call.groupName,
-                            category: '個人',
-                            members: <String>[_store.myName, call.callerName],
-                          ));
-                _store.clearIncomingCall(status: 'active');
-                Navigator.of(context).push<void>(
-                  MaterialPageRoute<void>(
-                    builder: (_) => CallScreen(
-                      store: _store,
-                      group: group,
-                      initialVideo: withVideo,
-                      callId: call.callId,
-                    ),
-                  ),
-                );
-              },
-            );
           }
  
           return MainShell(store: _store);
