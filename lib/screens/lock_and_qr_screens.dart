@@ -141,7 +141,7 @@ class _LockOverlayScreenState extends State<LockOverlayScreen> {
                 const Icon(Icons.lock_outline, size: 56, color: Color(0xFF1B8A5A)),
                 const SizedBox(height: 12),
                 const Text(
-                  'つながる電話 ロック中',
+                  'trancefer ロック中',
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 16),

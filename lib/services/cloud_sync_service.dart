@@ -162,7 +162,7 @@ class CloudSyncService {
       android: AndroidNotificationDetails(
         chId,
         '着信通知（${payload.ringtone}）',
-        channelDescription: 'つながる電話の着信通知',
+        channelDescription: 'tranceferの着信通知',
         importance: Importance.max,
         priority: Priority.high,
         category: AndroidNotificationCategory.call,

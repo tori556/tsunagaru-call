@@ -29,8 +29,8 @@ void main() {
 
   testWidgets('Basic MaterialApp smoke test', (WidgetTester tester) async {
     await tester.pumpWidget(
-      const MaterialApp(home: Scaffold(body: Text('つながる電話'))),
+      const MaterialApp(home: Scaffold(body: Text('trancefer'))),
     );
-    expect(find.text('つながる電話'), findsOneWidget);
+    expect(find.text('trancefer'), findsOneWidget);
   });
 }

@@ -157,6 +157,7 @@ jobs:
                   else:
                       mtxt = re.sub(r"(<application\b)", "    <queries>\n" + q_body + "    </queries>\n" + r"\1", mtxt, count=1)
 
+              mtxt = re.sub(r'android:label="[^"]*"', 'android:label="trancefer"', mtxt)  # app_label
               if mtxt != orig_m:
                   manifest.write_text(mtxt, encoding="utf-8")
 

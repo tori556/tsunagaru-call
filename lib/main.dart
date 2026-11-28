@@ -97,7 +97,7 @@ class _TsunagaruCallAppState extends State<TsunagaruCallApp>
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'つながる電話',
+      title: 'trancefer',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1B8A5A)),
@@ -312,7 +312,7 @@ class _MainShellState extends State<MainShell> {
  
     return Scaffold(
       appBar: AppBar(
-        title: const Text('つながる電話'),
+        title: const Text('trancefer'),
         actions: <Widget>[
           IconButton(
             tooltip: 'QR・IDで友だち追加',

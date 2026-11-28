@@ -289,7 +289,7 @@ class AuthLockService {
   static Future<bool> authenticateBiometric() async {
     try {
       return await _localAuth.authenticate(
-        localizedReason: 'つながる電話のロックを解除します',
+        localizedReason: 'tranceferのロックを解除します',
         options: const AuthenticationOptions(
           biometricOnly: true,
           stickyAuth: true,
