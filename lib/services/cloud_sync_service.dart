@@ -45,7 +45,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 }
  
 class CloudSyncService {
-  StreamSubscription<QuerySnapshot>>? _callSub;
+  QuerySub? _callSub;
   final Set<String> _activeRingingCallIds = <String>{};
 
   bool isReady = false;
