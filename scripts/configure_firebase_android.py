@@ -5,6 +5,21 @@ import os
 import re
 from pathlib import Path
 
+manifest_path = Path("android/app/src/main/AndroidManifest.xml")
+
+# Android プロジェクト本体が生成される前に android/ フォルダを先に作らない
+if not manifest_path.exists():
+    print("[info] AndroidManifest.xml not found yet; deferring Firebase config until after flutter create.")
+    raise SystemExit(0)
+
+# Android v2 embedding メタデータが欠けていれば補完
+man_txt = manifest_path.read_text(encoding="utf-8", errors="ignore")
+if 'android:name="flutterEmbedding"' not in man_txt and "</application>" in man_txt:
+    v2_meta = '        <meta-data android:name="flutterEmbedding" android:value="2" />\n'
+    man_txt = man_txt.replace("</application>", v2_meta + "    </application>", 1)
+    manifest_path.write_text(man_txt, encoding="utf-8")
+    print("[updated] Added flutterEmbedding v2 metadata to AndroidManifest.xml")
+
 secret_val = os.environ.get("GOOGLE_SERVICES_JSON_B64", "").strip()
 if not secret_val:
     print("[info] GOOGLE_SERVICES_JSON_B64 is not set; building in local mode.")
