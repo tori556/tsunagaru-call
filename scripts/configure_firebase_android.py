@@ -13,9 +13,17 @@ if not manifest_path.exists():
     print("[info] AndroidManifest.xml not found yet; deferring Android config until after flutter create.")
     raise SystemExit(0)
 
-# 1. AndroidManifest.xml の v2 embedding 保護 ＋ TimeTree / LINE / ブラウザ / 電話 の起動許可を補完
+# 1. AndroidManifest.xml の v2 embedding 保護 ＋ INTERNET 権限 ＋ 外部アプリ起動許可
 man_txt = manifest_path.read_text(encoding="utf-8", errors="ignore")
 man_orig = man_txt
+
+if "android.permission.INTERNET" not in man_txt and "<application" in man_txt:
+    man_txt = man_txt.replace(
+        "<application",
+        '    <uses-permission android:name="android.permission.INTERNET" />\n    <application',
+        1,
+    )
+    print("[updated] Added INTERNET permission to AndroidManifest.xml")
 
 if 'android:name="flutterEmbedding"' not in man_txt and "</application>" in man_txt:
     v2_meta = '        <meta-data android:name="flutterEmbedding" android:value="2" />\n'
@@ -42,12 +50,40 @@ if missing_intents:
             f"    <queries>\n{joined_intents}    </queries>\n</manifest>",
             1,
         )
-    print("[updated] Added queries intents for external apps (https/http/tel/timetree/line)")
+    print("[updated] Added queries intents for external apps")
 
 if man_txt != man_orig:
     manifest_path.write_text(man_txt, encoding="utf-8")
 
-# 2. GOOGLE_SERVICES_JSON_B64 から google-services.json と res/values/firebase_options.xml を直接生成
+# 2. R8 コード圧縮を無効化（Firestore unavailable 防止）
+app_kts = Path("android/app/build.gradle.kts")
+app_groovy = Path("android/app/build.gradle")
+if app_kts.exists():
+    atxt = app_kts.read_text(encoding="utf-8", errors="ignore")
+    if "isMinifyEnabled = false" not in atxt:
+        atxt_new = re.sub(
+            r'(getByName\("release"\)\s*\{|release\s*\{)',
+            r'\1\n            isMinifyEnabled = false\n            isShrinkResources = false',
+            atxt,
+            count=1,
+        )
+        if atxt_new != atxt:
+            app_kts.write_text(atxt_new, encoding="utf-8")
+            print("[updated] Disabled R8 minify/shrink in android/app/build.gradle.kts")
+elif app_groovy.exists():
+    atxt = app_groovy.read_text(encoding="utf-8", errors="ignore")
+    if "minifyEnabled false" not in atxt:
+        atxt_new = re.sub(
+            r'(release\s*\{)',
+            r'\1\n            minifyEnabled false\n            shrinkResources false',
+            atxt,
+            count=1,
+        )
+        if atxt_new != atxt:
+            app_groovy.write_text(atxt_new, encoding="utf-8")
+            print("[updated] Disabled R8 minify/shrink in android/app/build.gradle")
+
+# 3. GOOGLE_SERVICES_JSON_B64 から google-services.json と res/values/firebase_options.xml を生成
 secret_val = os.environ.get("GOOGLE_SERVICES_JSON_B64", "").strip()
 if not secret_val:
     print("[warn] GOOGLE_SERVICES_JSON_B64 is empty; skipping Firebase resource generation.")
@@ -122,7 +158,6 @@ res_xml_path.parent.mkdir(parents=True, exist_ok=True)
 res_xml_path.write_text("\n".join(xml_lines), encoding="utf-8")
 print(f"[ok] Generated {res_xml_path} (project_id={project_id}, package_name={pkg_name})")
 
-# 重複リソース衝突を防ぐため、Gradle 側の google-services プラグイン行を除去し applicationId を一致させる
 for gradle_file in [
     Path("android/settings.gradle.kts"),
     Path("android/settings.gradle"),
@@ -144,44 +179,3 @@ for gradle_file in [
     if gtxt != gorig:
         gradle_file.write_text(gtxt, encoding="utf-8")
         print(f"[updated] {gradle_file}")
-
-# 3. AndroidManifest.xml に INTERNET 権限を保証 & R8 コード圧縮を無効化（Firestore unavailable 防止）
-man_now = manifest_path.read_text(encoding="utf-8", errors="ignore")
-if "android.permission.INTERNET" not in man_now and "<application" in man_now:
-    man_now = man_now.replace(
-        "<application",
-        '    <uses-permission android:name="android.permission.INTERNET" />
-    <application',
-        1,
-    )
-    manifest_path.write_text(man_now, encoding="utf-8")
-    print("[updated] Added INTERNET permission to AndroidManifest.xml")
-
-app_kts = Path("android/app/build.gradle.kts")
-app_groovy = Path("android/app/build.gradle")
-if app_kts.exists():
-    atxt = app_kts.read_text(encoding="utf-8", errors="ignore")
-    if "isMinifyEnabled = false" not in atxt:
-        atxt = re.sub(
-            r'(getByName\("release"\)\s*\{|release\s*\{)',
-            r'\1
-            isMinifyEnabled = false
-            isShrinkResources = false',
-            atxt,
-            count=1,
-        )
-        app_kts.write_text(atxt, encoding="utf-8")
-        print("[updated] Disabled R8 minify/shrink in android/app/build.gradle.kts")
-elif app_groovy.exists():
-    atxt = app_groovy.read_text(encoding="utf-8", errors="ignore")
-    if "minifyEnabled false" not in atxt:
-        atxt = re.sub(
-            r'(release\s*\{)',
-            r'\1
-            minifyEnabled false
-            shrinkResources false',
-            atxt,
-            count=1,
-        )
-        app_groovy.write_text(atxt, encoding="utf-8")
-        print("[updated] Disabled R8 minify/shrink in android/app/build.gradle")
