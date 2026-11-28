@@ -63,7 +63,7 @@ jobs:
           EOF
           python3 /tmp/prepare_all.py
 
-          if [ ! -d "android" ]; then
+          if [ ! -f "android/app/src/main/AndroidManifest.xml" ]; then
             flutter create . --platforms=android --project-name tsunagaru_call --org jp.tsunagarucall
           fi
 
@@ -187,6 +187,13 @@ jobs:
           python3 /tmp/patch_android_extras.py
 
           yes | flutter doctor --android-licenses >/dev/null 2>&1 || true
+
+      - name: Configure Android Firebase values.xml & manifest queries
+        env:
+          GOOGLE_SERVICES_JSON_B64: ${{ secrets.GOOGLE_SERVICES_JSON_B64 }}
+        run: |
+          python3 scripts/configure_firebase_android.py
+          test -f android/app/src/main/res/values/firebase_options.xml && echo "[verify] firebase_options.xml ready" || echo "[warn] firebase_options.xml not created"
 
       - name: Auto-repair compatibility, analyze, test & build APK
         run: |
