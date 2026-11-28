@@ -45,6 +45,9 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 }
  
 class CloudSyncService {
+  StreamSubscription<QuerySnapshot>>? _callSub;
+  final Set<String> _activeRingingCallIds = <String>{};
+
   bool isReady = false;
   String? uid;
   String? fcmToken;
@@ -221,6 +224,7 @@ class CloudSyncService {
   void listenMyGroups(void Function(List<ChatGroup> remoteGroups) onUpdate) {
     if (!isReady || uid == null) return;
     _groupSub?.cancel();
+    _startCallListener();
     _groupSub = FirebaseFirestore.instance
         .collection('groups')
         .where('memberIds', arrayContains: uid)
@@ -464,7 +468,64 @@ class CloudSyncService {
     }
   }
  
+  
+  void _startCallListener() {
+    _callSub?.cancel();
+    _callSub = FirebaseFirestore.instance
+        .collection('calls')
+        .where('status', isEqualTo: 'ringing')
+        .snapshots()
+        .listen((snap) {
+      final myUid = uid;
+      if (myUid == null || myUid.isEmpty) return;
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      final currentIds = <String>{};
+
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        final callerId = data['callerId']?.toString() ?? '';
+        if (callerId.isEmpty || callerId == myUid) continue;
+
+        final groupId = data['groupId']?.toString() ?? '';
+        if (_msgSubs.isNotEmpty && !_msgSubs.containsKey(groupId)) continue;
+
+        int sentMs = nowMs;
+        final createdAt = data['createdAt'];
+        if (createdAt is Timestamp) {
+          sentMs = createdAt.millisecondsSinceEpoch;
+        } else if (data['sentAtEpochMs'] is int) {
+          sentMs = data['sentAtEpochMs'] as int;
+        }
+        if ((nowMs - sentMs).abs() > 120000) continue;
+
+        currentIds.add(doc.id);
+        if (_activeRingingCallIds.add(doc.id)) {
+          final payload = IncomingCallPayload(
+          callId: doc.id,
+          groupId: groupId,
+          groupName: data['groupName']?.toString() ?? '着信',
+          roomName: data['roomName']?.toString() ?? '',
+          callerName: data['callerName']?.toString() ?? '相手',
+          isVideo: data['isVideo'] == true,
+          ringtone: data['ringtone']?.toString() ?? '標準チャイム',
+          sentAtEpochMs: sentMs,
+          );
+          onIncomingCall?.call(payload);
+        }
+      }
+
+      final ended = _activeRingingCallIds.difference(currentIds).toList();
+      for (final oldId in ended) {
+        _activeRingingCallIds.remove(oldId);
+        onCallCancelled?.call(oldId);
+      }
+    }, onError: (Object e, StackTrace s) {
+      ErrorGuard.record('着信監視エラー: $e', s);
+    });
+  }
+
   void dispose() {
+    _callSub?.cancel();
     _groupSub?.cancel();
     for (final sub in _msgSubs.values) {
       sub.cancel();
