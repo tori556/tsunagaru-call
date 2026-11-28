@@ -108,6 +108,47 @@ class AppStore extends ChangeNotifier {
     cloud.listenMyGroups((List<ChatGroup> remoteGroups) {
       var changed = false;
       for (final rg in remoteGroups) {
+        // AUTO_SYNC_DM_CONTACT: 1対1トーク同期時に未登録の相手を友だち一覧へ自動追加
+        final myUid = cloud.uid;
+        if (myUid != null &&
+            (rg.id.startsWith('dm_') || rg.memberUids.length == 2)) {
+          String? otherUid;
+          for (final u in rg.memberUids) {
+            if (u.isNotEmpty && u != myUid) {
+              otherUid = u;
+              break;
+            }
+          }
+          if (otherUid != null) {
+            String otherName = '';
+            for (final m in rg.members) {
+              if (m.trim().isNotEmpty && m != myName) {
+                otherName = m.trim();
+                break;
+              }
+            }
+            if (otherName.isEmpty) {
+              otherName = (rg.name.trim().isNotEmpty && rg.name != myName)
+                  ? rg.name.trim()
+                  : '相手';
+            }
+            final exists = contacts.any(
+              (c) => c.uid == otherUid || (otherName != '相手' && c.name == otherName),
+            );
+            if (!exists) {
+              contacts.add(
+                MemberProfile(
+                  inviteId: otherUid.length >= 6
+                      ? otherUid.substring(0, 6).toUpperCase()
+                      : otherUid,
+                  name: otherName,
+                  uid: otherUid,
+                ),
+              );
+              changed = true;
+            }
+          }
+        }
         final local = findGroup(rg.id);
         if (local == null) {
           groups.add(rg);
